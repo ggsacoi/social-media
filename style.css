@@ -1,0 +1,41 @@
+* {
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+font-family: "Poppins", serif;
+}
+body{
+display: flex;
+justify-content: center;
+align-items: center;
+min-height: 100vh;
+background-image: url("945731-3840x2160-desktop-4k-matte-black-wallpaper-image.jpg");
+color: #333;
+}
+button {
+width: 100%;
+padding: 12px;
+background:#7494ec;
+border-radius: 6px;
+border: none;
+cursor: pointer;
+font-size: 16px;
+color: #fff;
+font-weight: 500;
+margin-bottom: 20px;
+transition: 0.5s;
+}
+button:hover{
+background: #556dad;
+}
+h1 {
+    font-size: 50px;
+    color:cadetblue;
+}
+.box p{
+    font-size: 22px;
+    color: cadetblue;
+}
+span {
+    color: brown;
+}
