@@ -24,14 +24,17 @@ if (strlen($query) < 1) {
 }
 
 $searchQuery = '%' . $query . '%';
-$stmt = $conn->prepare('SELECT username FROM users WHERE username LIKE ? AND username != ? LIMIT 4');
+$stmt = $conn->prepare('SELECT username, profile_pic FROM users WHERE username LIKE ? AND username != ? LIMIT 4');
 $stmt->bind_param('ss', $searchQuery, $currentUsername);
 $stmt->execute();
 $result = $stmt->get_result();
 
 $users = [];
 while ($row = $result->fetch_assoc()) {
-    $users[] = $row['username'];
+    $users[] = [
+        'username' => $row['username'],
+        'profile_pic' => $row['profile_pic'] ?: 'default.png'
+    ];
 }
 
 echo json_encode($users);
