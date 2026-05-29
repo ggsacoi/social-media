@@ -60,3 +60,14 @@ CREATE TABLE IF NOT EXISTS `comments` (
     CONSTRAINT `fk_comment_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE,
     CONSTRAINT `fk_comment_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+-- 4. Table livestreams
+CREATE TABLE IF NOT EXISTS `livestreams` (
+    `id` INT(10) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT(10) UNSIGNED NOT NULL,
+    `title` VARCHAR(255),
+    `start_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `end_time` DATETIME NULL,
+    `is_active` TINYINT(1) DEFAULT 1,
+    CONSTRAINT `fk_livestream_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;

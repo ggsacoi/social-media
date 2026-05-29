@@ -2,6 +2,11 @@
 // post_handler.php - Gestion des posts et commentaires
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_post'])) {
+    // Validation du token CSRF
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        die('Erreur de sécurité CSRF. Veuillez réessayer.');
+    }
+    
     $legende = trim($_POST['legende'] ?? '');
     error_log("Attempting to create post. Legende: " . substr($legende, 0, 50));
     if (isset($_FILES['media_file'])) {
@@ -80,6 +85,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_post'])) {
 
 // --- LOGIQUE D'ENVOI DE COMMENTAIRE ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_comment'])) {
+    // Validation du token CSRF
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        die('Erreur de sécurité CSRF. Veuillez réessayer.');
+    }
+    
     $postId = $_POST['post_id'] ?? null;
     $commentContent = trim($_POST['comment_content'] ?? '');
     $commentMediaUrl = '';

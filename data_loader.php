@@ -3,10 +3,26 @@
 
 // Récupération de tous les utilisateurs pour la barre latérale (bomoto)
 $userLimit = 9;
-$totalUsersRes = $conn->query("SELECT COUNT(*) as total FROM users");
+$totalUsersRes = $conn->prepare("SELECT COUNT(*) as total FROM users");
+$totalUsersRes->execute();
+$totalUsersRes = $totalUsersRes->get_result();
 $totalUsersCount = $totalUsersRes->fetch_assoc()['total'];
 $totalUserPages = ceil($totalUsersCount / $userLimit);
-$sidebarUsers = $conn->query("SELECT username, profile_pic FROM users ORDER BY username ASC LIMIT $userLimit");
+$sidebarUsers = $conn->prepare(
+    "SELECT u.id, u.username, u.profile_pic, IF(active.user_id IS NULL, 0, 1) AS is_live
+     FROM users u
+     LEFT JOIN (
+         SELECT user_id
+         FROM livestreams
+         WHERE is_active = 1
+         GROUP BY user_id
+     ) active ON u.id = active.user_id
+     ORDER BY u.username ASC
+     LIMIT ?"
+);
+$sidebarUsers->bind_param('i', $userLimit);
+$sidebarUsers->execute();
+$sidebarUsers = $sidebarUsers->get_result();
 
 $withUsername = trim($_GET['with'] ?? '');
 $withId = null;

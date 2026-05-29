@@ -1,13 +1,17 @@
 <?php
 session_start();
+require_once 'config.php';
 
 $errors = [
     'login' => $_SESSION['login_error'] ?? '',
     'register' => $_SESSION['register_error'] ?? ''
-    ];
-    $activeForm = $_SESSION['active-form'] ?? 'login';
-    
-    session_unset();
+];
+$activeForm = $_SESSION['active_form'] ?? 'login';
+
+// Clear errors ONLY (keep session for CSRF token)
+unset($_SESSION['login_error']);
+unset($_SESSION['register_error']);
+unset($_SESSION['active_form']);
     
     function showError($error) {
         return !empty($error) ? "<p class='error-message'>$error</p>" : '';
@@ -31,6 +35,7 @@ $errors = [
         <div class="container">
             <div class="form-box <?= isActiveForm('login', $activeForm); ?>" id="login-form">
                 <form action="login_register.php" method="post">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(getCsrfToken()); ?>">
                     <h2>Login</h2>
                     <?= showError($errors['login']); ?>
                     <input type="text" name="email" placeholder="Email" required>
@@ -41,6 +46,7 @@ $errors = [
             </div>
         <div class="form-box<?= isActiveForm('register', $activeForm); ?>" id="register-form">
             <form action="login_register.php" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(getCsrfToken()); ?>">
                 <h2>Register</h2>
                 <?= showError($errors['register']); ?>
                 <input type="text" name="username" placeholder="username">

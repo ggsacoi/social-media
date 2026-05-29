@@ -40,6 +40,11 @@ $commentSeed = (int)$_SESSION['comment_seed'];
 
 // Logique d'envoi de commentaire (Ajoutée pour traiter le formulaire sur cette page)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['submit_comment']) || isset($_GET['ajax_submit']))) {
+    // Validation du token CSRF
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        die('Erreur de sécurité CSRF. Veuillez réessayer.');
+    }
+    
     $postId = $_POST['post_id'] ?? null;
     $commentContent = trim($_POST['comment_content'] ?? '');
     $commentMediaUrl = '';
@@ -119,6 +124,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['submit_comment']) ||
 
 // Logique de mise à jour du profil
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
+    // Validation du token CSRF
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        die('Erreur de sécurité CSRF. Veuillez réessayer.');
+    }
+    
     $newNumero = trim($_POST['numero'] ?? '');
     $newEmail = trim($_POST['email'] ?? '');
     $newBio = trim($_POST['bio'] ?? '');
@@ -266,6 +276,7 @@ $posts = $postsStmt->get_result();
     <div class="modal-edit-content">
       <span class="close-modal">&times;</span>
       <form action="profil.php<?php echo $uParam; ?>" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(getCsrfToken()); ?>">
         <h3>Modifier mes informations</h3>
         <label>Numéro de téléphone :</label>
         <input type="text" name="numero" value="<?php echo htmlspecialchars($profileUser['numero'] ?? ''); ?>">
@@ -302,6 +313,7 @@ $posts = $postsStmt->get_result();
         
         <!-- Formulaire de commentaire ajouté en bas -->
         <form method="POST" action="profil.php<?php echo isset($_GET['u']) ? '?u='.urlencode($_GET['u']) : ''; ?>" enctype="multipart/form-data" class="comment-form" id="modalCommentForm">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(getCsrfToken()); ?>">
           <input type="hidden" name="post_id" id="modalPostId" value="">
           <div class="wrote">
             <input class="wrotecomment" type="text" name="comment_content" placeholder="Ajouter un commentaire...">
@@ -321,6 +333,9 @@ $posts = $postsStmt->get_result();
   <script src="https://kit.fontawesome.com/d28f9485ed.js" crossorigin="anonymous"></script>
   <script src="user_page.js?v=11"></script>
   <script>
+    // Définir le token CSRF comme variable globale pour les requêtes AJAX
+    window.csrfToken = '<?php echo htmlspecialchars(getCsrfToken()); ?>';
+    
     // Gestion de la recherche d'utilisateurs
     const searchInput = document.getElementById('searchInput');
     const searchResults = document.getElementById('searchResults');
@@ -455,7 +470,7 @@ $posts = $postsStmt->get_result();
             fetch('follow.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, profileId })
+                body: JSON.stringify({ action, profileId, csrf_token: window.csrfToken })
             })
             .then(response => response.json())
             .then(data => {

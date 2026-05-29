@@ -212,6 +212,10 @@
                                             </form>
                                         `;
                                         if (typeof initAudioVisualizers === 'function') initAudioVisualizers();
+                                        const modalCommentsList = document.querySelector('.modal-comments-list');
+                                        if (typeof reorderTaggedComments === 'function' && modalCommentsList) {
+                                            reorderTaggedComments(modalCommentsList);
+                                        }
 
                                         // Met à jour l'ID du post pour le formulaire de la modal
                                         const modalPostIdInput = document.getElementById('modalPostId');
@@ -246,6 +250,9 @@
                                                     const commentsList = document.querySelector('.modal-comments-list');
                                                     if (commentsList) {
                                                         commentsList.insertAdjacentHTML('beforeend', html);
+                                                        if (typeof reorderTaggedComments === 'function') {
+                                                            reorderTaggedComments(commentsList);
+                                                        }
                                                         commentsList.scrollTop = commentsList.scrollHeight;
                                                     }
                                                     this.reset();
@@ -279,6 +286,102 @@
                     }
                 }
             });
+
+            function fillCommentTagInput(commentItem) {
+                if (!commentItem) return;
+                const username = (commentItem.dataset.commentUsername || '').trim();
+                if (!username) return;
+
+                const tagValue = '@' + username + ' ';
+                let form = commentItem.closest('.post-item')?.querySelector('.comment-form');
+                if (!form) {
+                    form = document.getElementById('modalCommentForm') || commentItem.closest('.modal-comments-list')?.closest('.modal-comments-side')?.querySelector('.comment-form');
+                }
+                if (!form) return;
+
+                const input = form.querySelector('.wrotecomment');
+                if (!input) return;
+                input.value = tagValue;
+                input.focus();
+            }
+
+            document.addEventListener('click', function(e) {
+                const usernameEl = e.target.closest('.comment-character h4');
+                if (!usernameEl) return;
+                const commentItem = usernameEl.closest('.comment-item');
+                fillCommentTagInput(commentItem);
+            });
+
+            function reorderTaggedComments(container) {
+                if (!container) return;
+                const comments = Array.from(container.querySelectorAll('.comment-item'));
+                if (comments.length === 0) return;
+
+                const authorIndex = new Map();
+                comments.forEach((comment, index) => {
+                    const author = (comment.dataset.commentUsername || comment.querySelector('.comment-character h4')?.textContent || '').trim();
+                    if (author) {
+                        const normalized = author.toLowerCase();
+                        if (!authorIndex.has(normalized)) {
+                            authorIndex.set(normalized, {comment, index});
+                        }
+                    }
+                });
+
+                const orderedComments = comments.map((comment, index) => {
+                    const content = (comment.dataset.commentContent || comment.querySelector('p')?.textContent || '').trim();
+                    const match = content.match(/@([\p{L}\p{N}_]+)/u);
+                    let sortKey = index;
+                    if (match) {
+                        const taggedUsername = match[1].trim().toLowerCase();
+                        const target = authorIndex.get(taggedUsername);
+                        if (target && target.comment !== comment) {
+                            sortKey = target.index + 0.1 + index * 1e-6;
+                        }
+                    }
+                    return {comment, sortKey, index};
+                });
+
+                orderedComments.sort((a, b) => {
+                    if (a.sortKey !== b.sortKey) return a.sortKey - b.sortKey;
+                    return a.index - b.index;
+                });
+
+                const fragment = document.createDocumentFragment();
+                orderedComments.forEach(item => fragment.appendChild(item.comment));
+                container.appendChild(fragment);
+                formatCommentTags(container);
+            }
+
+            function escapeHtml(text) {
+                return text
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function formatCommentTags(container) {
+                if (!container) return;
+                container.querySelectorAll('.comment-item').forEach(comment => {
+                    const rawContent = comment.dataset.commentContent || comment.querySelector('p')?.textContent || '';
+                    const escapedContent = escapeHtml(rawContent);
+                    const formatted = escapedContent.replace(/@([\p{L}\p{N}_]+)/gu, (match, username) => {
+                        return `<strong>@${escapeHtml(username)}</strong>`;
+                    });
+                    const paragraph = comment.querySelector('p');
+                    if (paragraph) {
+                        paragraph.innerHTML = formatted;
+                    }
+                });
+            }
+
+            function reorderAllTaggedComments() {
+                document.querySelectorAll('.comments-section').forEach(section => reorderTaggedComments(section));
+            }
+
+            reorderAllTaggedComments();
 
             function blobToDataURL(blob) {
                 return new Promise((resolve) => {
@@ -361,6 +464,192 @@
             // Initialisation pour le formulaire de Post et de Message
             setupMediaHandling('post');
             setupMediaHandling('msg');
+
+            const liveStreamButton = document.getElementById('liveStreamButton');
+            let liveStreamState = { stream: null, container: null, video: null, sessionId: null };
+
+            function createLiveStreamContainer() {
+                let overlay = document.getElementById('liveStreamVideoModal');
+                if (overlay) return overlay;
+
+                overlay = document.createElement('div');
+                overlay.id = 'liveStreamVideoModal';
+                Object.assign(overlay.style, {
+                    position: 'fixed',
+                    inset: '0',
+                    background: 'rgba(0, 0, 0, 0.75)',
+                    zIndex: '10050',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px'
+                });
+
+                const modal = document.createElement('div');
+                modal.id = 'liveStreamModalContent';
+                Object.assign(modal.style, {
+                    position: 'relative',
+                    width: '65vw',
+                    maxWidth: '65vw',
+                    height: '65vh',
+                    maxHeight: '65vh',
+                    background: '#000',
+                    borderRadius: '18px',
+                    overflow: 'hidden',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
+                });
+
+                const video = document.createElement('video');
+                video.id = 'liveStreamVideo';
+                video.autoplay = true;
+                video.playsInline = true;
+                video.muted = true;
+                video.style.width = '100%';
+                video.style.height = '100%';
+                video.style.objectFit = 'contain';
+                modal.appendChild(video);
+
+                const closeBtn = document.createElement('button');
+                closeBtn.type = 'button';
+                closeBtn.innerHTML = '&times;';
+                closeBtn.title = 'Arrêter le stream';
+                Object.assign(closeBtn.style, {
+                    position: 'absolute',
+                    top: '12px',
+                    right: '12px',
+                    width: '32px',
+                    height: '32px',
+                    border: 'none',
+                    borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '20px',
+                    lineHeight: '1'
+                });
+                closeBtn.addEventListener('click', stopLiveStream);
+                modal.appendChild(closeBtn);
+
+                overlay.appendChild(modal);
+                overlay.addEventListener('click', (event) => {
+                    if (event.target === overlay) {
+                        stopLiveStream();
+                    }
+                });
+
+                document.body.appendChild(overlay);
+                return overlay;
+            }
+
+            async function startLiveStream() {
+                if (window.livestreamDebug) {
+                    console.log('[user_page.js] livestream-clean active, skipping legacy startLiveStream');
+                    return;
+                }
+
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    alert('Caméra non supportée par votre navigateur.');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('livestream_handler.php', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRF-Token': window.csrfToken || ''
+                        },
+                        body: 'action=start&title=Livestream&csrf_token=' + encodeURIComponent(window.csrfToken || '')
+                    });
+                    const data = await response.json();
+                    
+                    if (!data.success) {
+                        alert('Erreur : ' + (data.error || 'Impossible de démarrer le livestream'));
+                        return;
+                    }
+
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    const container = createLiveStreamContainer();
+                    const video = container.querySelector('video');
+                    video.srcObject = stream;
+
+                    liveStreamState = { stream, container, video, sessionId: data.livestream_id };
+                    if (liveStreamButton) {
+                        liveStreamButton.title = 'Arrêter le stream';
+                        liveStreamButton.style.background = '#4caf50';
+                    }
+                } catch (error) {
+                    console.error('Erreur de streaming caméra :', error);
+                    alert('Impossible d’accéder à la caméra. Vérifiez les permissions.');
+                }
+            }
+
+            async function stopLiveStream() {
+                if (window.livestreamDebug) {
+                    console.log('[user_page.js] livestream-clean active, skipping legacy stopLiveStream');
+                    return;
+                }
+
+                if (!liveStreamState.stream) return;
+                
+                liveStreamState.stream.getTracks().forEach(track => track.stop());
+                if (liveStreamState.video) {
+                    liveStreamState.video.srcObject = null;
+                }
+                if (liveStreamState.container) {
+                    liveStreamState.container.remove();
+                }
+
+                if (liveStreamState.sessionId) {
+                    try {
+                        await fetch('livestream_handler.php', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-CSRF-Token': window.csrfToken || ''
+                            },
+                            body: 'action=stop&livestream_id=' + liveStreamState.sessionId + '&csrf_token=' + encodeURIComponent(window.csrfToken || '')
+                        });
+                    } catch (error) {
+                        console.error('Erreur lors de l\'arrêt du livestream:', error);
+                    }
+                }
+
+                liveStreamState = { stream: null, container: null, video: null, sessionId: null };
+                if (liveStreamButton) {
+                    liveStreamButton.title = 'Démarrer le stream';
+                    liveStreamButton.style.background = 'red';
+                }
+            }
+
+            function toggleLiveStream() {
+                if (window.livestreamDebug) {
+                    // livestream-clean.js prend déjà en charge le live
+                    return;
+                }
+                if (liveStreamState.stream) {
+                    stopLiveStream();
+                } else {
+                    startLiveStream();
+                }
+            }
+
+            if (liveStreamButton) {
+                liveStreamButton.addEventListener('click', toggleLiveStream);
+                liveStreamButton.title = 'Démarrer le stream';
+
+                const cleanupInterval = setInterval(() => {
+                    if (window.livestreamDebug) {
+                        liveStreamButton.removeEventListener('click', toggleLiveStream);
+                        console.log('[user_page.js] Removed legacy liveStreamButton listener because livestream-clean.js is active');
+                        clearInterval(cleanupInterval);
+                    }
+                }, 100);
+
+                setTimeout(() => clearInterval(cleanupInterval), 2000);
+            }
 
             function initAudioVisualizers() {
                 const visualizers = document.querySelectorAll('.audio-visualizer:not(.initialized)');

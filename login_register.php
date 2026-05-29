@@ -4,6 +4,11 @@ session_start();
 require_once 'config.php';
 
 if(isset($_POST['register'])) {
+    // Validation du token CSRF
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        die('Erreur de sécurité CSRF. Veuillez réessayer.');
+    }
+    
     $username = $_POST['username'];
     $numero = $_POST['numero'];
     $email = $_POST['email'];
@@ -27,22 +32,44 @@ if(isset($_POST['register'])) {
         }
     }
 
-    $checkEmail = $conn->query("SELECT email FROM users WHERE email = '$email'");
+    $checkStmt = $conn->prepare("SELECT email FROM users WHERE email = ?");
+    if (!$checkStmt) {
+        die("Erreur de préparation: " . $conn->error);
+    }
+    $checkStmt->bind_param('s', $email);
+    $checkStmt->execute();
+    $checkEmail = $checkStmt->get_result();
     if($checkEmail->num_rows > 0) {
         $_SESSION['register_error'] = 'Email is already registered!';
         $_SESSION['active_form'] = 'register';
     }
     else { 
-        $conn->query("INSERT INTO users (username, numero, email, motdepasse, profile_pic) VALUES ('$username','$numero', '$email', '$motdepasse', '$profile_pic')"); 
+        $insertStmt = $conn->prepare("INSERT INTO users (username, numero, email, motdepasse, profile_pic) VALUES (?, ?, ?, ?, ?)");
+        if (!$insertStmt) {
+            die("Erreur de préparation: " . $conn->error);
+        }
+        $insertStmt->bind_param('sssss', $username, $numero, $email, $motdepasse, $profile_pic);
+        $insertStmt->execute();
     }
     header("Location: index.php");
     exit();
 }
 if(isset($_POST['login'])) {
+    // Validation du token CSRF
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        die('Erreur de sécurité CSRF. Veuillez réessayer.');
+    }
+    
     $email = $_POST['email'];
     $motdepasse = $_POST['motdepasse'];
 
-    $result = $conn->query("SELECT * FROM users WHERE email = '$email'");
+    $loginStmt = $conn->prepare("SELECT * FROM users WHERE email = ?");
+    if (!$loginStmt) {
+        die("Erreur de préparation: " . $conn->error);
+    }
+    $loginStmt->bind_param('s', $email);
+    $loginStmt->execute();
+    $result = $loginStmt->get_result();
     if($result->num_rows > 0) {
         $user = $result->fetch_assoc();
         if(password_verify($motdepasse, $user['motdepasse'])) {

@@ -21,6 +21,13 @@ if (!isset($_SESSION['email'])) {
 $data = json_decode(file_get_contents('php://input'), true);
 $action = $data['action'] ?? '';
 $profileId = (int)($data['profileId'] ?? 0);
+$token = $data['csrf_token'] ?? '';
+
+// Validation du token CSRF
+if (!validateCsrfToken($token)) {
+    echo json_encode(['success' => false, 'message' => 'Erreur CSRF']);
+    exit();
+}
 
 if (!$profileId || !in_array($action, ['follow', 'unfollow'])) {
     echo json_encode(['success' => false, 'message' => 'Invalid data']);

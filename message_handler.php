@@ -3,6 +3,11 @@
 
 // --- LOGIQUE D'ENVOI (Issue de document.php) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['submit_post']) && !isset($_POST['submit_comment'])) {
+    // Validation du token CSRF
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        die('Erreur de sécurité CSRF. Veuillez réessayer.');
+    }
+    
     error_log("POST request received"); // Debug log
     $recipientUsername = trim($_POST['username_destinataire'] ?? '');
     $withUsernameFromGet = trim($_GET['with'] ?? '');

@@ -38,7 +38,7 @@ if (isset($_GET['ajax_comments'])) {
     $stmtCommentsAjax->execute();
     $ajaxComments = $stmtCommentsAjax->get_result();
     while($comment = $ajaxComments->fetch_assoc()): ?>
-        <div class="comment-item">
+        <div class="comment-item" data-comment-username="<?php echo htmlspecialchars($comment['username'], ENT_QUOTES, 'UTF-8'); ?>" data-comment-content="<?php echo htmlspecialchars($comment['contenu'], ENT_QUOTES, 'UTF-8'); ?>">
             <div class="comment-character">
                 <span class="people" style="background-image: url('<?php echo htmlspecialchars($comment['profile_pic']); ?>'); background-size: cover;">
                     <?php if(empty($comment['profile_pic'])): ?><i class="fa-solid fa-user"></i><?php endif; ?>
@@ -70,7 +70,10 @@ if (isset($_GET['ajax_users'])) {
     $uLimit = 9;
     $uPage = isset($_GET['user_page']) ? (int)$_GET['user_page'] : 2;
     $uOffset = ($uPage - 1) * $uLimit;
-    $sUsers = $conn->query("SELECT username, profile_pic FROM users ORDER BY username ASC LIMIT $uLimit OFFSET $uOffset");
+    $sUsers = $conn->prepare("SELECT username, profile_pic FROM users ORDER BY username ASC LIMIT ? OFFSET ?");
+    $sUsers->bind_param('ii', $uLimit, $uOffset);
+    $sUsers->execute();
+    $sUsers = $sUsers->get_result();
     while($su = $sUsers->fetch_assoc()): ?>
         <div class="eloko">
             <a href="profil.php?u=<?php echo urlencode($su['username']); ?>" class="avatar-link">
@@ -95,11 +98,16 @@ $currentPage = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['p
 if ($currentPage < 1) $currentPage = 1;
 $offset = ($currentPage - 1) * $limit;
 
-$totalPostsRes = $conn->query("SELECT COUNT(*) as total FROM posts");
+$totalPostsRes = $conn->prepare("SELECT COUNT(*) as total FROM posts");
+$totalPostsRes->execute();
+$totalPostsRes = $totalPostsRes->get_result();
 $totalPosts = $totalPostsRes->fetch_assoc()['total'];
 $totalPages = ceil($totalPosts / $limit);
 
-$allPosts = $conn->query("SELECT p.*, u.username, u.profile_pic FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.date_publication DESC LIMIT $limit OFFSET $offset");
+$allPosts = $conn->prepare("SELECT p.*, u.username, u.profile_pic FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.date_publication DESC LIMIT ? OFFSET ?");
+$allPosts->bind_param('ii', $limit, $offset);
+$allPosts->execute();
+$allPosts = $allPosts->get_result();
 
 if (isset($_GET['ajax'])) {
     while($post = $allPosts->fetch_assoc()): ?>
