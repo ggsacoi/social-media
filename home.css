@@ -93,7 +93,7 @@ body {
     top: 0;          
     height: 100vh;
     display: block;
-    width: 15vw;
+    width: 15%;
     border: solid 1px rgb(0, 0, 0);
     text-align: center; /* Centre le contenu en ligne/inline-block */
     overflow-y: auto;
@@ -121,14 +121,30 @@ body {
     flex-direction: row;
     align-items: center;
     padding: 0;
-    gap: 10px;
+    gap: 6px;
 }
-.avatar-link, .name-link {
+.avatar-link {
     text-decoration: none;
     color: inherit;
     display: flex;
     align-items: center;
-    margin: 5px;
+    margin: 0;
+    flex-shrink: 0;
+}
+.name-link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    margin: 0;
+    min-width: 0;
+    flex: 1;
+}
+.name-link h4 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
 }
 .chat-icon-btn {
     margin-left: auto;
@@ -139,8 +155,7 @@ body {
     transform: scale(1.1);
 }
 .news {
-    flex: 1;
-    width: auto;
+    width: 60%;
     border: solid 1px rgb(0, 0, 0);
 }
 .post-item {
@@ -155,7 +170,7 @@ body {
     display: flex;
     flex-direction: column;
     height: max-content;
-    width: 1200px;
+    width: 100%;
     gap: 2px;
     justify-content: center;
     align-items: center;
@@ -182,7 +197,7 @@ input, button, textarea {
     position: sticky;
     top: 0;
     height: 100vh;
-    width: 25vw;
+    width: 25%;
     border: solid 1px rgb(0, 0, 0);
     overflow: auto;
 }
@@ -417,7 +432,7 @@ input, button, textarea {
     display: flex;
     flex-direction: column;
     height: max-content;
-    width: 1200px;
+    width: 100%;
     gap: 2px;
     justify-content: center;
     align-items: center;
@@ -893,4 +908,119 @@ input, button, textarea {
     font-size: 0.8rem;
     color: #1877f2;
     padding: 4px 0;
+}
+/* Styles pour le dropdown des actions de publication */
+.post-actions-dropdown {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.post-actions-dropdown .dropdown-trigger {
+    display: none !important;
+}
+.post-actions-dropdown .dropdown-menu {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+/* Style par défaut du bouton de livestream (rouge) sur bureau */
+#liveStreamButton {
+    background: red !important;
+}
+#liveStreamButton i {
+    color: white !important;
+}
+
+
+@media (max-width: 1036px) {
+    
+    .post-actions-dropdown {
+        align-items: center;
+        gap: 6px;
+        position: relative;
+        cursor: pointer;
+        padding: 6px 12px;
+        border-radius: 8px;
+        transition: background 0.2s;
+    }
+    .post-actions-dropdown:hover {
+        background: #f0f2f5;
+    }
+    .post-actions-dropdown .dropdown-trigger {
+        display: flex !important;
+        align-items: center;
+        gap: 6px;
+        background: transparent !important;
+        color: #333 !important;
+        border: none;
+        cursor: pointer;
+        padding: 0 !important;
+        margin-top: 0 !important;
+        border-radius: 0 !important;
+        width: auto !important;
+        height: auto !important;
+    }
+    .post-actions-dropdown .dropdown-trigger:hover {
+        background: #1666c1;
+    }
+    .post-actions-dropdown .dropdown-menu {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        padding: 8px;
+        min-width: 180px;
+        z-index: 1000;
+        padding: 10px 0;
+        flex-direction: column;
+        gap: 0;
+    }
+    /* Activation par survol comme dans user-mini */
+    .post-actions-dropdown:hover .dropdown-menu,
+    .post-actions-dropdown .dropdown-menu.show {
+        display: flex;
+    }
+    .post-actions-dropdown .dropdown-menu button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 20px;
+        color: #333;
+        text-decoration: none;
+        font-size: 14px;
+        background: transparent !important;
+        border: none;
+        width: 100%;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.2s;
+        font-weight: normal;
+        border-radius: 0 !important;
+        height: auto !important;
+        margin: 0 !important;
+        justify-content: flex-start !important;
+    }
+    .post-actions-dropdown .dropdown-menu button:hover {
+        background: #f5f5f5 !important;
+        color: #1877f2 !important;
+    }
+    /* Forcer la couleur des icônes dans le menu pour éviter le blanc sur blanc */
+    .post-actions-dropdown .dropdown-menu button i {
+        color: #555 !important;
+        font-size: 16px;
+        width: 20px;
+        text-align: center;
+    }
+    .post-actions-dropdown .dropdown-menu button:hover i {
+        color: #1877f2 !important;
+    }
+}
+@media (max-width: 1150px) {   
+    .name-link {
+        display: none !important;
+    }
 }

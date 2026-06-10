@@ -30,6 +30,8 @@ unset($_SESSION['active_form']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>connexion</title>
     <link rel="stylesheet" href="login.css">
+    <!-- Google AdSense Verification Script -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1336558294811026" crossorigin="anonymous"></script>
 </head>
 <body>
         <div class="container">

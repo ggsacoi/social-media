@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['submit_post']) && !i
                     mkdir($uploadDir, 0777, true);
                     error_log("Created directory: $uploadDir"); // Debug log
                 }
-                $newFilename = uniqid() . '.' . $audioExt;
+                $newFilename = 'message_audio_' . uniqid() . '.' . $audioExt;
                 $targetPath = $uploadDir . $newFilename;
                 error_log("Target path: $targetPath"); // Debug log
                 
@@ -70,12 +70,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['submit_post']) && !i
     if ($mediaUrl === '' && isset($_FILES['media_file']) && $_FILES['media_file']['error'] === 0) {
         $filename = $_FILES['media_file']['name'];
         $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $mime = $_FILES['media_file']['type'] ?? '';
         
         $imgExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'jfif'];
-        $vidExts = ['mp4', 'webm', 'ogg'];
-        $audExts = ['mp3', 'wav', 'ogg'];
+        $vidExts = ['mp4', 'webm', 'ogg', 'mov', 'avi'];
+        $audExts = ['mp3', 'wav', 'ogg', 'webm', 'm4a', 'aac'];
 
-        if (in_array($ext, $imgExts)) $mediaType = 'image';
+        if (strpos($mime, 'image/') === 0) $mediaType = 'image';
+        elseif (strpos($mime, 'video/') === 0) $mediaType = 'video';
+        elseif (strpos($mime, 'audio/') === 0) $mediaType = 'audio';
+        elseif (in_array($ext, $imgExts)) $mediaType = 'image';
         elseif (in_array($ext, $vidExts)) $mediaType = 'video';
         elseif (in_array($ext, $audExts)) $mediaType = 'audio';
         else {
@@ -86,7 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['submit_post']) && !i
             $uploadDir = __DIR__ . '/uploads/messages/';
             if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
             
-            $newFilename = uniqid() . '.' . $ext;
+            $prefix = ($mediaType === 'audio') ? 'message_audio_' : (($mediaType === 'video') ? 'message_video_' : 'message_media_');
+            $newFilename = $prefix . uniqid() . '.' . $ext;
             $targetPath = $uploadDir . $newFilename;
             
             if(move_uploaded_file($_FILES['media_file']['tmp_name'], $targetPath)) {
@@ -103,6 +108,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['submit_post']) && !i
 
     // On envoie si on a soit du texte, soit un média
     if ($recipientUsername !== '' && ($contenu !== '' || $mediaUrl !== '') && $recipientUsername !== $userName) {
+        // Modération du message (texte et image)
+        $moderationResult = moderateContent($contenu, $mediaUrl);
+        if (!$moderationResult['safe']) {
+            $error_msg = $moderationResult['reason'] ?? 'Message inapproprié détecté.';
+            error_log("❌ Message bloqué par la modération : " . $error_msg);
+            if (!empty($mediaUrl) && file_exists(__DIR__ . '/' . $mediaUrl)) {
+                unlink(__DIR__ . '/' . $mediaUrl);
+            }
+            $_SESSION['post_error'] = $error_msg; // Réutiliser post_error de session
+            header('Location: user_page.php?with=' . urlencode($recipientUsername));
+            exit();
+        }
+
         error_log("Sending message - Recipient: $recipientUsername, Content: " . substr($contenu, 0, 50) . ", Media: $mediaUrl, Type: $mediaType"); // Debug log
         $stmt = $conn->prepare('SELECT id FROM users WHERE username = ?');
         $stmt->bind_param('s', $recipientUsername);

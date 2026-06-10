@@ -1,7 +1,7 @@
--- Script pour recréer la base de données login-portfolio avec support multimédia
+-- Script pour recréer la base de données systeme-relationnel-humain avec support multimédia
 
-CREATE DATABASE IF NOT EXISTS `login-portfolio`;
-USE `login-portfolio`;
+CREATE DATABASE IF NOT EXISTS `systeme-relationnel-humain`;
+USE `systeme-relationnel-humain`;
 
 -- 1. Table users
 CREATE TABLE IF NOT EXISTS `users` (

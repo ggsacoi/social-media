@@ -9,18 +9,9 @@ $totalUsersRes = $totalUsersRes->get_result();
 $totalUsersCount = $totalUsersRes->fetch_assoc()['total'];
 $totalUserPages = ceil($totalUsersCount / $userLimit);
 $sidebarUsers = $conn->prepare(
-    "SELECT u.id, u.username, u.profile_pic, IF(active.user_id IS NULL, 0, 1) AS is_live
-     FROM users u
-     LEFT JOIN (
-         SELECT user_id
-         FROM livestreams
-         WHERE is_active = 1
-         GROUP BY user_id
-     ) active ON u.id = active.user_id
-     ORDER BY u.username ASC
-     LIMIT ?"
+    "SELECT id, username, profile_pic FROM users ORDER BY RAND(?) LIMIT ?"
 );
-$sidebarUsers->bind_param('i', $userLimit);
+$sidebarUsers->bind_param('ii', $commentSeed, $userLimit);
 $sidebarUsers->execute();
 $sidebarUsers = $sidebarUsers->get_result();
 
@@ -63,6 +54,18 @@ if ($conversationSelected) {
 } else {
     $messages = false;
 }
+
+// Récupération de la following-list (utilisateurs suivis) pour l'affichage dans koloba
+$followingStmt = $conn->prepare(
+    "SELECT u.id, u.username, u.profile_pic 
+     FROM follows f 
+     JOIN users u ON f.followed_id = u.id 
+     WHERE f.follower_id = ?
+     ORDER BY u.username ASC"
+);
+$followingStmt->bind_param('i', $userId);
+$followingStmt->execute();
+$followingList = $followingStmt->get_result();
 
 function getMessageSeenLabel($type, $lu) {
     if ($type !== 'envoyé') {

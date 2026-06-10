@@ -1,8 +1,24 @@
 <?php
-    $host = "localhost";
-    $user = "root";
-    $password = "";
-    $database = "login-portfolio";
+// Détecter si le serveur a rejeté la requête POST parce qu'elle dépasse post_max_size
+$isJsonRequest = isset($_SERVER['CONTENT_TYPE']) && stripos($_SERVER['CONTENT_TYPE'], 'application/json') !== false;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isJsonRequest && empty($_POST) && isset($_SERVER['CONTENT_LENGTH']) && $_SERVER['CONTENT_LENGTH'] > 0) {
+    die('Erreur : La taille des données envoyées dépasse la limite autorisée par le serveur (post_max_size).');
+}
+
+    // Détection automatique de l'environnement (Local vs Serveur)
+    if (isset($_SERVER['HTTP_HOST']) && ($_SERVER['HTTP_HOST'] === 'localhost' || $_SERVER['HTTP_HOST'] === '127.0.0.1')) {
+        // Configuration pour votre ordinateur (XAMPP local)
+        $host = "localhost";
+        $user = "root";
+        $password = "";
+        $database = "systeme-relationnel-humain";
+    } else {
+        // Configuration pour votre serveur Hostinger (En ligne)
+        $host = "localhost";
+        $user = "lanceur-mer-base";
+        $password = "hmb16e0xoqmaLeX3hTrm";
+        $database = "systeme-relationnel-humain";
+    }
 
 $conn = new mysqli($host, $user, $password, $database);
 
@@ -101,4 +117,6 @@ function validateSignalingToken($token, $expectedUserId = null) {
     }
     return true;
 }
+
+require_once 'moderation.php';
 ?>

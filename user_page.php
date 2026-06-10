@@ -32,6 +32,14 @@ require_once 'post_handler.php';
 require_once 'message_handler.php';
 require_once 'ajax_handlers.php';
 require_once 'data_loader.php';
+
+// Diagnostic de connexion au serveur de modération Node.js
+$moderationOnline = false;
+$socket = @fsockopen('127.0.0.1', 3000, $errno, $errstr, 0.1);
+if ($socket) {
+    $moderationOnline = true;
+    fclose($socket);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -39,10 +47,10 @@ require_once 'data_loader.php';
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>lemonde</title>
-        <link rel="stylesheet" href="home.css?v=12">
+        <link rel="stylesheet" href="home.css?v=14">
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
         <!-- Google AdSense : chargement asynchrone de la librairie publicitaire -->
-        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1336558294811026" crossorigin="anonymous"></script>
         <style>
             #nsfwStatus {
                 position: fixed;
@@ -114,6 +122,18 @@ require_once 'data_loader.php';
                 border-radius: 8px;
                 text-decoration: none;
                 font-size: 0.9rem;
+                cursor: pointer;
+            }
+            .active-live-list .show-more-btn {
+                background: #e53935;
+                color: white;
+                padding: 6px 10px;
+                border-radius: 8px;
+                border: none;
+                font-size: 0.9rem;
+                cursor: pointer;
+                display: block;
+                margin: 10px auto 0;
             }
             .active-live-empty {
                 color: #555;
@@ -145,11 +165,16 @@ require_once 'data_loader.php';
                     <input type="hidden" name="submit_post" value="1">
                     <input type="text" name="legende" id="post_contenu" placeholder="Quoi de neuf ?">
                     <button type="submit" name="submit_post" class="btn-send">Poster</button>
-                    <button type="button" class="sendMedia" onclick="openMediaFile('post')"><i class="fa-regular fa-image"></i></button>
-                    <button type="button" id="post_micButton"><i class="fa-solid fa-microphone"></i></button>
+                    <div class="post-actions-dropdown">
+                        <button type="button" class="dropdown-trigger" id="postActionsDropdownTrigger" title="Plus d'options"><i class="fa-solid fa-plus"></i> Options</button>
+                        <div class="dropdown-menu">
+                            <button type="button" class="sendMedia" onclick="openMediaFile('post')"><i class="fa-regular fa-image"></i> Média</button>
+                            <button type="button" id="post_micButton"><i class="fa-solid fa-microphone"></i> Vocal</button>
+                            <button type="button" id="liveStreamButton"><i class="fa-solid fa-tower-broadcast"></i> Direct</button>
+                        </div>
+                    </div>
                     <input type="file" name="media_file" id="post_mediaInput" style="display:none;" accept="image/*,video/*,audio/*">
                     <input type="hidden" id="post_recordedAudioData" name="recorded_audio_data">
-                    <button type="button" style="background: red;" id="liveStreamButton"><i class="fa-solid fa-tower-broadcast" style="color: white;"></i></button>
                     <div id="post_fileNameDisplay" style="display:none;"></div>
                 </form>
                 <span id="post_recordStatus"></span>
@@ -157,7 +182,7 @@ require_once 'data_loader.php';
                     Bloc publicitaire AdSense : remplacez ca-pub et data-ad-slot par vos propres identifiants
                     <ins class="adsbygoogle"
                          style="display:inline-block;width:320px;height:100px"
-                         data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+                         data-ad-client="ca-pub-1336558294811026"
                          data-ad-slot="1234567890"></ins>
                     <script>
                         (adsbygoogle = window.adsbygoogle || []).push({});
@@ -192,37 +217,33 @@ require_once 'data_loader.php';
                                 <a href="profil.php?u=<?php echo urlencode($sideUser['username']); ?>" class="name-link">
                                     <h4><?php echo htmlspecialchars($sideUser['username']); ?></h4>
                                 </a>
-                                <?php if ($sideUser['id'] == $userId):
-                                    // Bouton pour l'utilisateur courant — id conservé pour les scripts JS existants
-                                    $ownLive = !empty($sideUser['is_live']);
-                                ?>
-                                    <button type="button" id="liveStreamButton" style="background: <?php echo $ownLive ? '#4caf50' : 'red'; ?>; color: white; padding:6px 8px; border-radius:6px;">
-                                        <?php echo $ownLive ? 'En direct' : 'Démarrer live'; ?>
-                                    </button>
-                                <?php else: ?>
-                                    <?php if (!empty($sideUser['is_live'])): ?>
-                                        <a href="view_livestream.php?u=<?php echo urlencode($sideUser['username']); ?>" class="view-live-btn" style="background:#e53935;color:white;padding:6px 8px;border-radius:6px;text-decoration:none;">Voir le live</a>
-                                    <?php else: ?>
-                                        <span style="color:#666;font-size:0.9rem;">&nbsp;</span>
-                                    <?php endif; ?>
-                                <?php endif; ?>
+                                <span style="color:#666;font-size:0.9rem;">&nbsp;</span>
                                 <a href="user_page.php?with=<?php echo urlencode($sideUser['username']); ?>" class="chat-icon-btn" title="Envoyer un message">
                                     <i class="fa-regular fa-comment-dots"></i>
                                 </a>
                             </div>
                         <?php endwhile; ?>
                     </div>
+                    <?php if ($totalUserPages > 1): ?>
+                        <button id="load-more-users" data-total-pages="<?php echo $totalUserPages; ?>" data-seed="<?php echo $commentSeed; ?>">Afficher plus</button>
+                    <?php endif; ?>
                     <div id="active-live-list" class="active-live-list">
                         <h3>Lives en cours</h3>
                         <div id="activeLivesContainer">
                             <p class="active-live-empty">Chargement des lives en cours...</p>
                         </div>
                     </div>
-                    <?php if ($totalUserPages > 1): ?>
-                        <button id="load-more-users" data-total-pages="<?php echo $totalUserPages; ?>">Afficher plus</button>
-                    <?php endif; ?>
                 </article>
         <section class="news">
+                <?php if (!$moderationOnline): ?>
+                    <div style="background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 15px 20px; border-radius: 8px; margin: 20px; font-weight: bold; display: flex; align-items: center; gap: 12px; font-family: 'Poppins', sans-serif; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                        <i class="fa-solid fa-circle-exclamation" style="font-size: 1.4rem; color: #856404;"></i>
+                        <div>
+                            <span style="font-size: 1rem; display: block; margin-bottom: 2px; color: #856404;">⚠️ Serveur de Modération Hors Ligne</span>
+                            <span style="font-weight: normal; font-size: 0.9rem; color: #856404;">Le serveur Node.js est arrêté. La détection de nudité NudeNet est <strong>désactivée</strong> (les vidéos ne sont pas modérées). Pour l'activer, double-cliquez sur <code>webrtc-server/start-server.bat</code>.</span>
+                        </div>
+                    </div>
+                <?php endif; ?>
                 <div class="content">
                     <?php $postIndex = 0; ?>
                     <?php while($post = $allPosts->fetch_assoc()): ?>
@@ -316,7 +337,7 @@ require_once 'data_loader.php';
                         <div class="adsense-banner post-ad">
                             <ins class="adsbygoogle"
                                  style="display:inline-block;width:320px;height:100px"
-                                 data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+                                 data-ad-client="ca-pub-1336558294811026"
                                  data-ad-slot="1234567890"></ins>
                             <script>
                                 (adsbygoogle = window.adsbygoogle || []).push({});
@@ -347,12 +368,90 @@ require_once 'data_loader.php';
                 <form id="msgForm" method="post" action="user_page.php<?php echo $withUsername !== '' ? '?with=' . urlencode($withUsername) : ''; ?>" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(getCsrfToken()); ?>">
                     <div class="message-recipient-row">
-                        <label for="username_destinataire">Nouveau message à :</label>
+                        <label>Mes abonnements :</label>
                         <button type="button" id="unreadNotificationBubble" class="unread-notification-bubble" title="Voir les nouveaux messages">0</button>
                     </div>
-                    <div class="search-container">
-                        <input type="text" name="username_destinataire" id="username_destinataire" placeholder="Chercher un utilisateur..." autocomplete="off" value="<?php echo htmlspecialchars($withUsername, ENT_QUOTES, 'UTF-8'); ?>">
-                        <div class="search-results" id="searchResults"></div>
+                    <input type="hidden" name="username_destinataire" id="username_destinataire" value="<?php echo htmlspecialchars($withUsername, ENT_QUOTES, 'UTF-8'); ?>">
+                    <div class="following-chat-list" style="display: flex; gap: 15px; overflow-x: auto; padding: 10px 5px; margin-bottom: 20px; border-bottom: 1px solid #eee; scrollbar-width: thin; scrollbar-color: #ccc #f1f1f1;">
+                        <style>
+                            .following-chat-list::-webkit-scrollbar {
+                                height: 4px;
+                            }
+                            .following-chat-list::-webkit-scrollbar-track {
+                                background: #f1f1f1;
+                                border-radius: 10px;
+                            }
+                            .following-chat-list::-webkit-scrollbar-thumb {
+                                background: #ccc;
+                                border-radius: 10px;
+                                transition: background 0.2s ease;
+                            }
+                            .following-chat-list::-webkit-scrollbar-thumb:hover {
+                                background: #e53935;
+                            }
+                            .following-item {
+                                display: flex;
+                                flex-direction: column;
+                                align-items: center;
+                                gap: 6px;
+                                cursor: pointer;
+                                text-decoration: none;
+                                min-width: 65px;
+                                transition: transform 0.2s ease, opacity 0.2s ease;
+                            }
+                            .following-item:hover {
+                                transform: scale(1.08);
+                            }
+                            .following-avatar {
+                                width: 52px;
+                                height: 52px;
+                                border-radius: 50%;
+                                background-size: cover;
+                                background-position: center;
+                                background-color: #ddd;
+                                border: 2px solid #ddd;
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                                font-size: 1.2rem;
+                                color: #666;
+                                transition: border-color 0.2s ease, box-shadow 0.2s ease;
+                            }
+                            .following-item.active .following-avatar {
+                                border-color: red;
+                                box-shadow: 0 0 8px rgba(255, 0, 0, 0.3);
+                            }
+                            .following-name {
+                                font-size: 0.75rem;
+                                font-weight: 600;
+                                color: #333;
+                                max-width: 65px;
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                            }
+                        </style>
+                        <?php if ($followingList && $followingList->num_rows > 0): ?>
+                            <?php while($fUser = $followingList->fetch_assoc()): ?>
+                                <?php 
+                                    $isActive = ($withUsername === $fUser['username']);
+                                    $pfp = !empty($fUser['profile_pic']) ? $fUser['profile_pic'] : 'default.png';
+                                    if ($pfp === 'default.png' || empty($fUser['profile_pic'])) {
+                                        $pfpUrl = '';
+                                    } else {
+                                        $pfpUrl = htmlspecialchars($fUser['profile_pic']);
+                                    }
+                                ?>
+                                <a href="user_page.php?with=<?php echo urlencode($fUser['username']); ?>" class="following-item <?php echo $isActive ? 'active' : ''; ?>" title="<?php echo htmlspecialchars($fUser['username']); ?>">
+                                    <div class="following-avatar" style="<?php echo !empty($pfpUrl) ? "background-image: url('" . $pfpUrl . "');" : ''; ?>">
+                                        <?php if(empty($pfpUrl)): ?><i class="fa-solid fa-user"></i><?php endif; ?>
+                                    </div>
+                                    <span class="following-name"><?php echo htmlspecialchars($fUser['username']); ?></span>
+                                </a>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <p style="font-size: 0.85rem; color: #888; padding: 10px; width: 100%; text-align: center;">Vous ne suivez personne.</p>
+                        <?php endif; ?>
                     </div>
                     <div id="unreadPopup" class="unread-popup" style="display:none;">
                         <div class="unread-popup-header">
@@ -432,203 +531,8 @@ require_once 'data_loader.php';
         <!-- App scripts -->
         <script src="user_page.js?v=19"></script>
         <script src="pagination.js?v=18"></script>
-        <script src="load_more_users.js?v=11"></script>
+        <script src="load_more_users.js?v=12"></script>
         <script src="livestream-clean.js?v=10"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0/dist/tf.min.js"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/nsfwjs@2.4.0/dist/nsfwjs.min.js"></script>
-        <script>
-            window.nsfwModel = null;
-            window.nsfwLoaded = false;
-            window.nsfwLoadError = false;
-
-            function showNsfwStatus(message, color = ‘#333’) {
-                const statusEl = document.getElementById(‘nsfwStatus’);
-                if (statusEl) {
-                    statusEl.textContent = message;
-                    statusEl.style.color = ‘white’;
-                    statusEl.style.backgroundColor = color;
-                    statusEl.classList.add(‘show’);
-                    if (color !== ‘#d00’) {
-                        setTimeout(() => statusEl.classList.remove(‘show’), 4000);
-                    }
-                }
-            }
-
-            function waitForNsfwLib(callback, maxRetries = 50) {
-                if (typeof nsfwjs !== ‘undefined’ && typeof tf !== ‘undefined’) {
-                    callback();
-                } else if (maxRetries > 0) {
-                    setTimeout(() => waitForNsfwLib(callback, maxRetries - 1), 100);
-                } else {
-                    console.error(‘NSFWJS or TensorFlow.js failed to load’);
-                    window.nsfwLoadError = true;
-                    showNsfwStatus(‘[WARNING] NSFW filter unavailable’, ‘#d00’);
-                }
-            }
-
-            async function loadNsfwModel() {
-                if (typeof nsfwjs === ‘undefined’) {
-                    console.error(‘NSFWJS library not available’);
-                    window.nsfwLoadError = true;
-                    showNsfwStatus(‘[WARNING] NSFW filter unavailable’, ‘#d00’);
-                    return;
-                }
-                const modelUrl = ‘https://cdn.jsdelivr.net/gh/infinitered/nsfwjs@2.4.0/example/nsfw_demo/public/quant_nsfw_mobilenet/’;
-                try {
-                    if (typeof tf !== ‘undefined’ && tf.setBackend) {
-                        try {
-                            await tf.setBackend(‘cpu’);
-                            await tf.ready();
-                        } catch (e) {
-                            console.warn(‘Could not set CPU backend:’, e);
-                        }
-                    }
-                    window.nsfwModel = await nsfwjs.load(modelUrl);
-                    window.nsfwLoaded = true;
-                    window.nsfwLoadError = false;
-                    console.log(‘[OK] NSFWJS model loaded’);
-                    showNsfwStatus(‘[OK] Content filter active’, ‘#4caf50’);
-                } catch (err) {
-                    console.error(‘NSFWJS load failed:’, err);
-                    window.nsfwLoadError = true;
-                    showNsfwStatus(‘[WARNING] NSFW filter error’, ‘#d00’);
-                }
-            }
-
-            function containsBlockedText(text) {
-                const blockedKeywords = [
-                    ‘porn’, ‘porno’, ‘pornographie’, ‘hentai’, ‘sex’, ‘sexe’, ‘sexuel’, ‘sexual’, ‘xxx’, ‘adult’,
-                    ‘bdsm’, ‘erotique’, ‘erotic’, ‘erotisme’, ‘nude’, ‘nu’, ‘nue’, ‘naked’, ‘seins’, ‘boobs’,
-                    ‘tits’, ‘nichon’, ‘cul’, ‘fellation’, ‘fellatio’, ‘masturb’, ‘masturbation’, ‘penetr’, ‘penis’,
-                    ‘pipe’, ‘bite’, ‘couilles’, ‘chatte’, ‘vagin’, ‘anus’, ‘pussy’, ‘cock’, ‘ass’, ‘fetish’, ‘cum’
-                ];
-                const lower = text.toLowerCase().replace(/[^a-z0-9\s]/g, ‘ ‘);
-                return blockedKeywords.some(keyword => {
-                    const regex = new RegExp(‘\\b’ + keyword + ‘\\b’);
-                    return regex.test(lower);
-                });
-            }
-
-            async function classifyImage(file) {
-                if (!window.nsfwLoaded) {
-                    if (window.nsfwLoadError) {
-                        console.warn(‘NSFW model unavailable’);
-                        showNsfwStatus(‘[WARNING] Filter unavailable - image allowed’, ‘#ff9800’);
-                        return false;
-                    }
-                    const start = Date.now();
-                    while (!window.nsfwLoaded && !window.nsfwLoadError && (Date.now() - start) < 3000) {
-                        await new Promise(r => setTimeout(r, 200));
-                    }
-                    if (!window.nsfwLoaded) {
-                        return false;
-                    }
-                }
-
-                return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                        const img = new Image();
-                        img.src = event.target.result;
-                        img.onload = async () => {
-                            try {
-                                const predictions = await window.nsfwModel.classify(img);
-                                if (!predictions || predictions.length === 0) {
-                                    resolve(false);
-                                    return;
-                                }
-
-                                const predMap = {};
-                                predictions.forEach(p => {
-                                    predMap[p.className.toLowerCase()] = p.probability;
-                                });
-
-                                const pornScore = predMap[‘porn’] || 0;
-                                const hentaiScore = predMap[‘hentai’] || 0;
-                                const sexyScore = predMap[‘sexy’] || 0;
-                                const neutralScore = predMap[‘neutral’] || 0;
-
-                                const isBlocked = (pornScore > 0.15) || (hentaiScore > 0.15) || (sexyScore > 0.80 && neutralScore < 0.10);
-
-                                if (isBlocked) {
-                                    showNsfwStatus(‘[BLOCKED] Explicit content detected’, ‘#d00’);
-                                    console.warn(‘Image blocked’, {porn: pornScore, hentai: hentaiScore, sexy: sexyScore});
-                                }
-                                resolve(isBlocked);
-                            } catch (err) {
-                                console.error(‘Classification error:’, err);
-                                resolve(false);
-                            }
-                        };
-                        img.onerror = () => {
-                            console.error(‘Image load error’);
-                            resolve(false);
-                        };
-                    };
-                    reader.readAsDataURL(file);
-                });
-            }
-
-            document.addEventListener(‘DOMContentLoaded’, function() {
-                waitForNsfwLib(loadNsfwModel);
-
-                const postForm = document.querySelector(‘.sendPost’);
-                if (postForm) {
-                    postForm.addEventListener(‘submit’, async function(event) {
-                        event.preventDefault();
-
-                        const postContent = document.getElementById(‘post_contenu’);
-                        const mediaInput = document.getElementById(‘post_mediaInput’);
-                        const text = postContent ? postContent.value.trim() : ‘’;
-                        const hasImage = mediaInput && mediaInput.files.length > 0 && mediaInput.files[0].type.toLowerCase().startsWith(‘image/’);
-
-                        if (text && containsBlockedText(text)) {
-                            showNsfwStatus(‘[BLOCKED] Explicit text detected’, ‘#d00’);
-                            alert(‘Your post contains prohibited sexual content.’);
-                            return;
-                        }
-
-                        if (hasImage) {
-                            const blocked = await classifyImage(mediaInput.files[0]);
-                            if (blocked) {
-                                alert(‘The image contains explicit content and cannot be posted.’);
-                                return;
-                            }
-                        }
-
-                        postForm.submit();
-                    });
-                }
-
-                document.addEventListener(‘submit’, async function(event) {
-                    const form = event.target;
-                    if (form.classList.contains(‘comment-form’)) {
-                        event.preventDefault();
-
-                        const commentInput = form.querySelector(‘.wrotecomment’);
-                        const mediaInput = form.querySelector(‘.comment-media-input’);
-                        const text = commentInput ? commentInput.value.trim() : ‘’;
-                        const hasImage = mediaInput && mediaInput.files.length > 0 && mediaInput.files[0].type.toLowerCase().startsWith(‘image/’);
-
-                        if (text && containsBlockedText(text)) {
-                            showNsfwStatus(‘[BLOCKED] Explicit text detected’, ‘#d00’);
-                            alert(‘Your comment contains prohibited sexual content.’);
-                            return;
-                        }
-
-                        if (hasImage) {
-                            const blocked = await classifyImage(mediaInput.files[0]);
-                            if (blocked) {
-                                alert(‘The image contains explicit content and cannot be posted.’);
-                                return;
-                            }
-                        }
-
-                        form.submit();
-                    }
-                }, true);
-            });
-        </script>
         <script>
         (function(){
             const POLL_INTERVAL = 5000;
@@ -641,61 +545,68 @@ require_once 'data_loader.php';
                     .replace(/'/g, '&#39;');
             }
             async function refreshLives(){
+                let data = null;
                 try{
-                    const resp = await fetch('get_active_livestreams.php', {credentials: 'same-origin'});
-                    if(!resp.ok) return;
-                    const data = await resp.json();
-                    if(!data.success) return;
-                    const liveUsers = new Set((data.livestreams||[]).map(l => String(l.user_id)));
-                    document.querySelectorAll('.eloko').forEach(el => {
-                        const uid = el.getAttribute('data-user-id');
-                        if(!uid) return;
-                        const isCurrent = String(uid) === String(window.currentUserId);
-                        const isLive = liveUsers.has(String(uid));
-                        if(isCurrent){
-                            const btn = document.querySelector('#liveStreamButton');
-                            if(btn){
-                                btn.style.background = isLive ? '#4caf50' : 'red';
-                                btn.textContent = isLive ? 'En direct' : 'Démarrer live';
-                            }
-                        } else {
-                            let view = el.querySelector('.view-live-btn');
-                            if(isLive){
-                                if(!view){
-                                    view = document.createElement('a');
-                                    view.className = 'view-live-btn';
-                                    const username = el.querySelector('.name-link h4') ? el.querySelector('.name-link h4').textContent.trim() : '';
-                                    view.href = 'view_livestream.php?u=' + encodeURIComponent(username);
-                                    view.textContent = 'Voir le live';
-                                    view.style.cssText = 'background:#e53935;color:white;padding:6px 8px;border-radius:6px;text-decoration:none;';
-                                    const chat = el.querySelector('.chat-icon-btn');
-                                    if(chat) el.insertBefore(view, chat);
-                                    else el.appendChild(view);
-                                }
-                            } else {
-                                if(view) view.remove();
-                            }
-                        }
-                    });
-                    const activeLivesContainer = document.getElementById('activeLivesContainer');
-                    if (activeLivesContainer) {
-                        if ((data.livestreams || []).length === 0) {
-                            activeLivesContainer.innerHTML = '<p class="active-live-empty">Aucun live en cours pour le moment.</p>';
-                        } else {
-                            activeLivesContainer.innerHTML = '';
-                            data.livestreams.forEach(stream => {
-                                const item = document.createElement('div');
-                                item.className = 'active-live-item';
-                                item.innerHTML = `<div class="live-user"><strong>${escapeHtml(stream.username)}</strong> <span class="live-badge">LIVE</span></div><a class="watch-btn" href="view_livestream.php?u=${encodeURIComponent(stream.username)}">Voir</a>`;
-                                activeLivesContainer.appendChild(item);
-                            });
-                        }
+                    // Tenter de récupérer depuis le serveur Node.js (temps réel)
+                    const resp = await fetch('http://localhost:3000/livestreams');
+                    if(resp.ok) {
+                        const parsed = await resp.json();
+                        if(parsed.success) data = parsed;
                     }
                 }catch(e){
-                    console.error('refreshLives error', e);
+                    console.warn('[refreshLives] Impossible de contacter le serveur Node.js, bascule vers la base locale...');
+                }
+
+                // Repli : récupérer depuis le script PHP local (base de données)
+                if (!data) {
+                    try {
+                        const resp = await fetch('get_active_livestreams.php');
+                        if (resp.ok) {
+                            const parsed = await resp.json();
+                            if (parsed.success) data = parsed;
+                        }
+                    } catch(err) {
+                        console.error('[refreshLives] Erreur lors de la récupération locale:', err);
+                    }
+                }
+
+                if (!data) return;
+
+                const liveUsers = new Set((data.livestreams||[]).map(l => String(l.user_id)));
+                const isOurLiveActive = liveUsers.has(String(window.currentUserId));
+                const navLiveBtn = document.getElementById('liveStreamButton');
+                if (navLiveBtn) {
+                    navLiveBtn.style.background = isOurLiveActive ? '#4caf50' : 'red';
+                }
+                const activeLivesContainer = document.getElementById('activeLivesContainer');
+                if (activeLivesContainer) {
+                    if ((data.livestreams || []).length === 0) {
+                        activeLivesContainer.innerHTML = '<p class="active-live-empty">Aucun live en cours pour le moment.</p>';
+                    } else {
+                        activeLivesContainer.innerHTML = '';
+                        const visibleStreams = data.livestreams.slice(0, window.activeLivesLimit);
+                        visibleStreams.forEach(stream => {
+                            const item = document.createElement('div');
+                            item.className = 'active-live-item';
+                            item.innerHTML = `<div class="live-user"><strong>${escapeHtml(stream.username)}</strong> <span class="live-badge">LIVE</span></div><a class="watch-btn" href="view_livestream.php?u=${encodeURIComponent(stream.username)}">Voir</a>`;
+                            activeLivesContainer.appendChild(item);
+                        });
+
+                        if (data.livestreams.length > window.activeLivesLimit) {
+                            const showMoreBtn = document.createElement('button');
+                            showMoreBtn.className = 'show-more-btn';
+                            showMoreBtn.textContent = 'Afficher plus';
+                            showMoreBtn.addEventListener('click', () => {
+                                window.activeLivesLimit += 5;
+                                refreshLives();
+                            });
+                            activeLivesContainer.appendChild(showMoreBtn);
+                        }
+                    }
                 }
             }
             // initial + interval
+            window.activeLivesLimit = 5;
             refreshLives();
             setInterval(refreshLives, POLL_INTERVAL);
         })();

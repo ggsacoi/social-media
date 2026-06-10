@@ -67,13 +67,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['submit_comment']) ||
         }
         // Gestion média classique
         if ($commentMediaUrl === '' && isset($_FILES['comment_media_file']) && $_FILES['comment_media_file']['error'] === 0) {
-            $ext = strtolower(pathinfo($_FILES['comment_media_file']['name'], PATHINFO_EXTENSION));
+            $filename = $_FILES['comment_media_file']['name'];
+            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+            $mime = $_FILES['comment_media_file']['type'] ?? '';
+            
+            if (strpos($mime, 'image/') === 0) $commentMediaType = 'image';
+            elseif (strpos($mime, 'video/') === 0) $commentMediaType = 'video';
+            elseif (strpos($mime, 'audio/') === 0) $commentMediaType = 'audio';
+            else {
+                $commentMediaType = in_array($ext, ['mp4', 'webm']) ? 'video' : (in_array($ext, ['mp3', 'wav']) ? 'audio' : 'image');
+            }
+
             $uploadDir = __DIR__ . '/uploads/comments/';
             if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
-            $newFilename = 'comment_media_' . uniqid() . '.' . $ext;
+            $prefix = ($commentMediaType === 'audio') ? 'comment_audio_' : 'comment_media_';
+            $newFilename = $prefix . uniqid() . '.' . $ext;
             if (move_uploaded_file($_FILES['comment_media_file']['tmp_name'], $uploadDir . $newFilename)) {
                 $commentMediaUrl = 'uploads/comments/' . $newFilename;
-                $commentMediaType = in_array($ext, ['mp4', 'webm']) ? 'video' : (in_array($ext, ['mp3', 'wav']) ? 'audio' : 'image');
             }
         }
 
@@ -203,7 +213,7 @@ $posts = $postsStmt->get_result();
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Profil - <?php echo htmlspecialchars($profileUser['username']); ?></title>
-  <link rel="stylesheet" href="profil.css?v=9">
+  <link rel="stylesheet" href="profil.css?v=10">
 </head>
 <body>
 
@@ -234,9 +244,15 @@ $posts = $postsStmt->get_result();
         <p class="bio"><?php echo htmlspecialchars($profileUser['bio'] ?: 'Bienvenue sur mon profil 🌍✨'); ?></p>
         <div class="stats">
           <div><strong><?php echo $postCount; ?></strong><span>Posts</span></div>
-          <button class="follow-btn" id="openFollowingModal">Voir les comptes suivis</button>
+          <?php if ($profileUsername === $_SESSION['username']) { ?>
+              <button class="follow-btn" id="openFollowingModal">Voir les comptes suivis</button>
+          <?php } ?>
         </div>
-        <button class="profil-follow"><?php if ($profileUsername === $_SESSION['username']) { echo 'Modifier le profil'; } else { ?><span class="follow-action" data-profile-id="<?php echo $profileId; ?>" data-is-following="<?php echo $isFollowing ? '1' : '0'; ?>"><?php echo $isFollowing ? 'Suivi' : 'Suivre'; ?></span><?php } ?></button>
+        <?php if ($profileUsername === $_SESSION['username']) { ?>
+            <button class="profil-follow">Modifier le profil</button>
+        <?php } else { ?>
+            <button class="profil-follow follow-action" data-profile-id="<?php echo $profileId; ?>" data-is-following="<?php echo $isFollowing ? '1' : '0'; ?>"><?php echo $isFollowing ? 'Suivi' : 'Suivre'; ?></button>
+        <?php } ?>
       </div>
     </section>
     <section class="gallery">
@@ -331,7 +347,7 @@ $posts = $postsStmt->get_result();
   </div>
 
   <script src="https://kit.fontawesome.com/d28f9485ed.js" crossorigin="anonymous"></script>
-  <script src="user_page.js?v=11"></script>
+  <script src="user_page.js?v=19"></script>
   <script>
     // Définir le token CSRF comme variable globale pour les requêtes AJAX
     window.csrfToken = '<?php echo htmlspecialchars(getCsrfToken()); ?>';
@@ -461,8 +477,8 @@ $posts = $postsStmt->get_result();
 
     // Gestion du suivi
     document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('follow-action')) {
-            const btn = e.target;
+        const btn = e.target.closest('.follow-action');
+        if (btn) {
             const profileId = btn.dataset.profileId;
             const isFollowing = btn.dataset.isFollowing === '1';
             const action = isFollowing ? 'unfollow' : 'follow';

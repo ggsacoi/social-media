@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (loadMoreUsersBtn && usersList) {
         const totalUserPages = parseInt(loadMoreUsersBtn.dataset.totalPages, 10);
+        const seed = loadMoreUsersBtn.dataset.seed || '';
 
         loadMoreUsersBtn.addEventListener('click', async () => {
             currentUserPage++;
@@ -12,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loadMoreUsersBtn.textContent = 'Chargement...';
 
             try {
-                const response = await fetch(`user_page.php?user_page=${currentUserPage}&ajax_users=1`);
+                const response = await fetch(`user_page.php?user_page=${currentUserPage}&ajax_users=1&seed=${seed}`);
                 if (!response.ok) throw new Error('Erreur réseau');
 
                 const html = await response.text();

@@ -1,6 +1,11 @@
 <?php
 // post_handler.php - Gestion des posts et commentaires
 
+if (isset($_SESSION['post_error'])) {
+    $error_msg = $_SESSION['post_error'];
+    unset($_SESSION['post_error']);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_post'])) {
     // Validation du token CSRF
     if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
@@ -44,12 +49,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_post'])) {
         error_log("Processing uploaded media file for post.");
         $filename = $_FILES['media_file']['name'];
         $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $mime = $_FILES['media_file']['type'] ?? '';
         
-        $imgExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'jfif'];
-        $vidExts = ['mp4', 'webm', 'ogg'];
-        $audExts = ['mp3', 'wav', 'ogg'];
+        $imgExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'jfif', 'avif'];
+        $vidExts = ['mp4', 'webm', 'ogg', 'mov', 'avi'];
+        $audExts = ['mp3', 'wav', 'ogg', 'webm', 'm4a', 'aac'];
 
-        if (in_array($ext, $imgExts)) $mediaType = 'image';
+        if (strpos($mime, 'image/') === 0) $mediaType = 'image';
+        elseif (strpos($mime, 'video/') === 0) $mediaType = 'video';
+        elseif (strpos($mime, 'audio/') === 0) $mediaType = 'audio';
+        elseif (in_array($ext, $imgExts)) $mediaType = 'image';
         elseif (in_array($ext, $vidExts)) $mediaType = 'video';
         elseif (in_array($ext, $audExts)) $mediaType = 'audio';
         else {
@@ -59,7 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_post'])) {
         $uploadDir = __DIR__ . '/uploads/posts/';
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
         
-        $newFilename = 'post_media_' . uniqid() . '.' . $ext;
+        $prefix = ($mediaType === 'audio') ? 'post_audio_' : 'post_media_';
+        $newFilename = $prefix . uniqid() . '.' . $ext;
         $targetPath = $uploadDir . $newFilename;
         error_log("Target path for post media upload: " . $targetPath);
         
@@ -74,6 +84,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_post'])) {
     }
 
     if (!empty($legende) || !empty($mediaUrl)) {
+        // Modération du post (texte et image)
+        $moderationResult = moderateContent($legende, $mediaUrl);
+        if (!$moderationResult['safe']) {
+            $error_msg = $moderationResult['reason'] ?? 'Contenu inapproprié détecté.';
+            error_log("❌ Publication bloquée par la modération : " . $error_msg);
+            if (!empty($mediaUrl) && file_exists(__DIR__ . '/' . $mediaUrl)) {
+                unlink(__DIR__ . '/' . $mediaUrl);
+            }
+            $_SESSION['post_error'] = $error_msg;
+            header("Location: user_page.php");
+            exit();
+        }
+
         $stmtPost = $conn->prepare('INSERT INTO posts (user_id, legende, media_url, media_type) VALUES (?, ?, ?, ?)');
         $stmtPost->bind_param('isss', $userId, $legende, $mediaUrl, $mediaType);
         $stmtPost->execute();
@@ -128,12 +151,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_comment'])) {
         if ($commentMediaUrl === '' && isset($_FILES['comment_media_file']) && $_FILES['comment_media_file']['error'] === 0) {
             $filename = $_FILES['comment_media_file']['name'];
             $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+            $mime = $_FILES['comment_media_file']['type'] ?? '';
             
             $imgExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'jfif'];
-            $vidExts = ['mp4', 'webm', 'ogg'];
-            $audExts = ['mp3', 'wav', 'ogg'];
+            $vidExts = ['mp4', 'webm', 'ogg', 'mov', 'avi'];
+            $audExts = ['mp3', 'wav', 'ogg', 'webm', 'm4a', 'aac'];
 
-            if (in_array($ext, $imgExts)) $commentMediaType = 'image';
+            if (strpos($mime, 'image/') === 0) $commentMediaType = 'image';
+            elseif (strpos($mime, 'video/') === 0) $commentMediaType = 'video';
+            elseif (strpos($mime, 'audio/') === 0) $commentMediaType = 'audio';
+            elseif (in_array($ext, $imgExts)) $commentMediaType = 'image';
             elseif (in_array($ext, $vidExts)) $commentMediaType = 'video';
             elseif (in_array($ext, $audExts)) $commentMediaType = 'audio';
             else {
@@ -147,7 +174,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_comment'])) {
                 }
             }
             
-            $newFilename = 'comment_media_' . uniqid() . '.' . $ext;
+            $prefix = ($commentMediaType === 'audio') ? 'comment_audio_' : 'comment_media_';
+            $newFilename = $prefix . uniqid() . '.' . $ext;
             $targetPath = $uploadDir . $newFilename;
             
             if (move_uploaded_file($_FILES['comment_media_file']['tmp_name'], $targetPath)) {
@@ -158,6 +186,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_comment'])) {
         }
 
         if (!empty($commentContent) || !empty($commentMediaUrl)) {
+            // Modération du commentaire (texte et image)
+            $moderationResult = moderateContent($commentContent, $commentMediaUrl);
+            if (!$moderationResult['safe']) {
+                $error_msg = $moderationResult['reason'] ?? 'Commentaire inapproprié détecté.';
+                error_log("❌ Commentaire bloqué par la modération : " . $error_msg);
+                if (!empty($commentMediaUrl) && file_exists(__DIR__ . '/' . $commentMediaUrl)) {
+                    unlink(__DIR__ . '/' . $commentMediaUrl);
+                }
+                if (isset($_GET['ajax_submit'])) {
+                    http_response_code(400);
+                    echo "<div style='color:red;padding:10px;font-weight:bold;'>⚠️ Modération : " . htmlspecialchars($error_msg) . "</div>";
+                    exit;
+                }
+                $_SESSION['post_error'] = $error_msg;
+                header("Location: user_page.php#post-" . $postId);
+                exit();
+            }
+
             $stmtComment = $conn->prepare('INSERT INTO comments (post_id, user_id, contenu, media_url, media_type) VALUES (?, ?, ?, ?, ?)');
             $stmtComment->bind_param('iisss', $postId, $userId, $commentContent, $commentMediaUrl, $commentMediaType);
             if ($stmtComment->execute()) {

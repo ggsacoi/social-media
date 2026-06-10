@@ -19,15 +19,6 @@ body {
   padding: 0 25px;
 }
 
-.search-bar {
-  width: 300px;
-  padding: 10px 70px 10px 15px;
-  border-radius: 20px;
-  border: 1px solid #ccc;
-  outline: none;
-  font-size: 16px;
-}
-
 .search-container {
   position: relative;
   display: flex;
@@ -35,34 +26,49 @@ body {
   width: 300px;
 }
 
-.search-icon, .clear-icon {
-  position: absolute;
-  color: #ccc;
-  font-size: 14px;
-  pointer-events: none;
-  background: rgba(255, 255, 255, 0.8);
-  border-radius: 50%;
-  width: 55px;
-  height: 55px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
+.search-bar {
+  width: 100%;
+  padding: 10px 40px 10px 40px; /* Espace à gauche pour la loupe et à droite pour le bouton effacer */
+  border-radius: 20px;
+  border: 1px solid #ddd;
+  outline: none;
+  font-size: 15px;
+  background: #f9f9f9;
+  transition: all 0.3s ease;
+}
+
+.search-bar:focus {
+  border-color: #1877f2;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.15);
 }
 
 .search-icon {
-  right: 40px;
+  position: absolute;
+  left: 15px;
+  color: #888;
+  font-size: 15px;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .clear-icon {
+  position: absolute;
   right: 15px;
-  pointer-events: auto;
+  color: #888;
+  font-size: 15px;
   cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
 }
 
 .clear-icon:hover {
-  background: #f0f0f0;
-  color: #666;
+  color: #333;
 }
 
 .search-results {

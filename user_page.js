@@ -92,6 +92,12 @@
                     .then(response => response.json())
                     .then(data => {
                         if (!data.success) return;
+                        if (data.csrf_token && data.csrf_token.trim() !== '') {
+                            window.csrfToken = data.csrf_token;
+                            document.querySelectorAll('input[name="csrf_token"]').forEach(input => {
+                                input.value = data.csrf_token;
+                            });
+                        }
                         unreadBubble.textContent = data.count > 0 ? data.count : '0';
                         unreadBubble.classList.toggle('active', data.count > 0);
                         unreadBubble.dataset.hasUnread = data.count > 0 ? '1' : '0';
@@ -413,10 +419,45 @@
                 mediaInput.addEventListener('change', function() {
                     if (recordedAudioData) recordedAudioData.value = '';
                     if (recordStatus) recordStatus.textContent = '';
-                    if (this.files && this.files.length > 0) {
-                        fileNameDisplay.innerHTML = '<i class="fa-solid fa-paperclip"></i> ' + this.files[0].name;
-                        fileNameDisplay.style.display = 'block';
-                        if(textarea) textarea.classList.add('with-file');
+                    
+                    const inputElement = this;
+                    if (inputElement.files && inputElement.files.length > 0) {
+                        const file = inputElement.files[0];
+                        
+                        // Si c'est un fichier audio ou vidéo, vérifier la durée
+                        if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
+                            const tempMedia = document.createElement('video');
+                            tempMedia.preload = 'metadata';
+                            tempMedia.src = URL.createObjectURL(file);
+                            tempMedia.onloadedmetadata = function() {
+                                URL.revokeObjectURL(tempMedia.src);
+                                const maxDuration = 30 * 60; // 30 minutes en secondes
+                                if (tempMedia.duration > maxDuration) {
+                                    alert("Le média est trop long ! La durée maximale autorisée est de 30 minutes.");
+                                    inputElement.value = '';
+                                    fileNameDisplay.textContent = '';
+                                    fileNameDisplay.style.display = 'none';
+                                    if(textarea) textarea.classList.remove('with-file');
+                                } else {
+                                    // Fichier valide
+                                    fileNameDisplay.innerHTML = '<i class="fa-solid fa-paperclip"></i> ' + file.name;
+                                    fileNameDisplay.style.display = 'block';
+                                    if(textarea) textarea.classList.add('with-file');
+                                }
+                            };
+                            tempMedia.onerror = function() {
+                                URL.revokeObjectURL(tempMedia.src);
+                                // Si erreur de lecture, on accepte par défaut
+                                fileNameDisplay.innerHTML = '<i class="fa-solid fa-paperclip"></i> ' + file.name;
+                                fileNameDisplay.style.display = 'block';
+                                if(textarea) textarea.classList.add('with-file');
+                            };
+                        } else {
+                            // Pour les images ou autres formats
+                            fileNameDisplay.innerHTML = '<i class="fa-solid fa-paperclip"></i> ' + file.name;
+                            fileNameDisplay.style.display = 'block';
+                            if(textarea) textarea.classList.add('with-file');
+                        }
                     } else {
                         fileNameDisplay.textContent = '';
                         fileNameDisplay.style.display = 'none';
@@ -772,9 +813,36 @@
                 });
 
                 mediaInput.addEventListener('change', function() {
-                    if (this.files && this.files.length > 0) {
-                        fileNameDisplay.innerHTML = '<i class="fa-solid fa-paperclip"></i> ' + this.files[0].name;
-                        fileNameDisplay.style.display = 'block';
+                    const inputElement = this;
+                    if (inputElement.files && inputElement.files.length > 0) {
+                        const file = inputElement.files[0];
+                        
+                        // Si c'est un fichier audio ou vidéo, vérifier la durée
+                        if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
+                            const tempMedia = document.createElement('video');
+                            tempMedia.preload = 'metadata';
+                            tempMedia.src = URL.createObjectURL(file);
+                            tempMedia.onloadedmetadata = function() {
+                                URL.revokeObjectURL(tempMedia.src);
+                                const maxDuration = 30 * 60; // 30 minutes en secondes
+                                if (tempMedia.duration > maxDuration) {
+                                    alert("Le média est trop long ! La durée maximale autorisée est de 30 minutes.");
+                                    inputElement.value = '';
+                                    fileNameDisplay.style.display = 'none';
+                                } else {
+                                    fileNameDisplay.innerHTML = '<i class="fa-solid fa-paperclip"></i> ' + file.name;
+                                    fileNameDisplay.style.display = 'block';
+                                }
+                            };
+                            tempMedia.onerror = function() {
+                                URL.revokeObjectURL(tempMedia.src);
+                                fileNameDisplay.innerHTML = '<i class="fa-solid fa-paperclip"></i> ' + file.name;
+                                fileNameDisplay.style.display = 'block';
+                            };
+                        } else {
+                            fileNameDisplay.innerHTML = '<i class="fa-solid fa-paperclip"></i> ' + file.name;
+                            fileNameDisplay.style.display = 'block';
+                        }
                     } else {
                         fileNameDisplay.style.display = 'none';
                     }
@@ -858,6 +926,24 @@
                             submitBtn.disabled = false;
                             submitBtn.textContent = 'Envoyer';
                         });
+                // Toggle post actions dropdown menu (Media, Mic, Live)
+                document.addEventListener('click', function(e) {
+                    const trigger = e.target.closest('#postActionsDropdownTrigger');
+                    if (trigger) {
+                        const menu = trigger.nextElementSibling;
+                        if (menu) {
+                            menu.classList.toggle('show');
+                        }
+                        e.stopPropagation();
+                        return;
+                    }
+                    
+                    // Close the dropdown menu if clicked outside
+                    const openMenus = document.querySelectorAll('.dropdown-menu.show');
+                    openMenus.forEach(menu => {
+                        if (!menu.contains(e.target)) {
+                            menu.classList.remove('show');
+                        }
                     });
-                }
+                });
             }); 

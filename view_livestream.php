@@ -63,14 +63,15 @@ if ($targetUsername !== '') {
                 <div class="status">Utilisateur introuvable ou URL invalide. Vérifiez le lien et reconnectez-vous.</div>
             <?php else: ?>
                 <video id="liveVideo" autoplay playsinline muted controls></video>
-                <div id="status" class="status">Connexion au serveur WebRTC sur le port 3000...</div>
+                <div id="status" class="status">Initialisation du lecteur P2P HLS...</div>
                 <script>
                     window.currentUserId = <?php echo json_encode($currentUserId); ?>;
                     window.currentUserName = <?php echo json_encode($currentUserName); ?>;
                     window.targetBroadcasterUserId = <?php echo json_encode($targetUserId); ?>;
                 </script>
                 <script src="//localhost:3000/socket.io/socket.io.js"></script>
-                <script src="webrtc-client.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.2.9/dist/hls.min.js"></script>
+                <script src="webrtc-client.js?v=22"></script>
                 <script>
                     const statusEl = document.getElementById('status');
                     const videoEl = document.getElementById('liveVideo');

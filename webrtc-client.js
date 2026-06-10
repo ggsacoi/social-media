@@ -51,95 +51,124 @@ class WebRTCClient {
   /**
    * Initialize Socket.io connection
    */
+  /**
+   * Initialize Socket.io connection
+   */
   async connect() {
     await this._loadClientConfig();
 
     return new Promise((resolve, reject) => {
-      if (!window.io) {
-        reject(new Error('Socket.io library not loaded. Include <script src="http://localhost:3000/socket.io/socket.io.js"></script>'));
-        return;
-      }
-
       const url = this.signalingServerUrl || `${window.location.protocol}//${window.location.hostname}:3000`;
-      console.log('[WebRTC] Attempting to connect to signaling server at', url);
       this.signalingServerUrl = url;
 
-      this.socket = window.io(url, {
-        transports: ['websocket', 'polling'],
-        path: '/socket.io',
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        reconnectionAttempts: 5
-      });
-
-      let connected = false;
-      const timeout = setTimeout(() => {
-        if (!connected) {
-          connected = true;
-          reject(new Error('Connection timeout'));
+      if (!window.io) {
+        console.log('[WebRTC] Socket.io not found in window, attempting dynamic load from', url);
+        const script = document.createElement('script');
+        
+        try {
+          const baseOrigin = new URL(url).origin;
+          script.src = `${baseOrigin}/socket.io/socket.io.js`;
+        } catch (e) {
+          script.src = `${window.location.protocol}//${window.location.hostname}:3000/socket.io/socket.io.js`;
         }
-      }, 5000);
 
-      this.socket.on('connect', () => {
-        console.log('[WebRTC] ✓ Connected to signaling server');
-        this.isConnected = true;
+        script.onload = () => {
+          console.log('[WebRTC] ✓ Socket.io loaded dynamically from', script.src);
+          if (window.io) {
+            this._establishSocketConnection(resolve, reject);
+          } else {
+            reject(new Error('Socket.io script loaded, but window.io is still undefined.'));
+          }
+        };
+        script.onerror = () => {
+          reject(new Error(`Failed to load Socket.io library from ${script.src}. Make sure the signaling server is running on port 3000.`));
+        };
+        document.head.appendChild(script);
+      } else {
+        this._establishSocketConnection(resolve, reject);
+      }
+    });
+  }
+
+  _establishSocketConnection(resolve, reject) {
+    const url = this.signalingServerUrl;
+    console.log('[WebRTC] Attempting to connect to signaling server at', url);
+
+    this.socket = window.io(url, {
+      transports: ['websocket', 'polling'],
+      path: '/socket.io',
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5
+    });
+
+    let connected = false;
+    const timeout = setTimeout(() => {
+      if (!connected) {
+        connected = true;
+        reject(new Error('Connection timeout to signaling server'));
+      }
+    }, 5000);
+
+    this.socket.on('connect', () => {
+      console.log('[WebRTC] ✓ Connected to signaling server');
+      this.isConnected = true;
+      connected = true;
+      clearTimeout(timeout);
+      resolve();
+    });
+
+    this.socket.on('connect_error', (error) => {
+      console.error('[WebRTC] Connection error:', error);
+      this.isConnected = false;
+      if (!connected) {
         connected = true;
         clearTimeout(timeout);
-        resolve();
-      });
+        reject(error);
+      }
+    });
 
-      this.socket.on('connect_error', (error) => {
-        console.error('[WebRTC] Connection error:', error);
-        this.isConnected = false;
-        if (!connected) {
-          connected = true;
-          clearTimeout(timeout);
-          reject(error);
-        }
-      });
+    this.socket.on('reconnect_error', (error) => {
+      console.warn('[WebRTC] Reconnect error:', error);
+    });
 
-      this.socket.on('reconnect_error', (error) => {
-        console.warn('[WebRTC] Reconnect error:', error);
-      });
+    this.socket.on('reconnect_failed', () => {
+      console.warn('[WebRTC] Reconnect failed');
+    });
 
-      this.socket.on('reconnect_failed', () => {
-        console.warn('[WebRTC] Reconnect failed');
-      });
+    this.socket.on('disconnect', () => {
+      console.log('[WebRTC] Disconnected from signaling server');
+      this.isConnected = false;
+    });
 
-      this.socket.on('disconnect', () => {
-        console.log('[WebRTC] Disconnected from signaling server');
-        this.isConnected = false;
-      });
+    // Handle incoming offers (viewer receiving stream)
+    this.socket.on('offer', async (data) => {
+      const { offer, fromUserId, fromSocketId, from } = data;
+      const peerId = fromUserId ?? fromSocketId ?? from;
+      console.log('[WebRTC] 📨 Received offer from', peerId, '(userId=', fromUserId, ', socketId=', fromSocketId, ')');
+      await this._handleOffer(offer, peerId);
+    });
 
-      // Handle incoming offers (viewer receiving stream)
-      this.socket.on('offer', async (data) => {
-        const { offer, fromUserId, fromSocketId, from } = data;
-        const peerId = fromUserId ?? fromSocketId ?? from;
-        console.log('[WebRTC] 📨 Received offer from', peerId, '(userId=', fromUserId, ', socketId=', fromSocketId, ')');
-        await this._handleOffer(offer, peerId);
-      });
+    // Handle incoming answers (broadcaster receiving viewer connection)
+    this.socket.on('answer', async (data) => {
+      const { answer, fromUserId, fromSocketId, from } = data;
+      const peerId = fromUserId ?? fromSocketId ?? from;
+      console.log('[WebRTC] 📨 Received answer from', peerId, '(userId=', fromUserId, ', socketId=', fromSocketId, ')');
+      await this._handleAnswer(answer, peerId);
+    });
 
-      // Handle incoming answers (broadcaster receiving viewer connection)
-      this.socket.on('answer', async (data) => {
-        const { answer, fromUserId, fromSocketId, from } = data;
-        const peerId = fromUserId ?? fromSocketId ?? from;
-        console.log('[WebRTC] 📨 Received answer from', peerId, '(userId=', fromUserId, ', socketId=', fromSocketId, ')');
-        await this._handleAnswer(answer, peerId);
-      });
+    // Handle ICE candidates
+    this.socket.on('ice-candidate', async (data) => {
+      const { candidate, fromUserId, fromSocketId, from } = data;
+      const peerId = fromUserId ?? fromSocketId ?? from;
+      if (candidate) {
+        await this._addIceCandidate(candidate, peerId);
+      }
+    });
 
-      // Handle ICE candidates
-      this.socket.on('ice-candidate', async (data) => {
-        const { candidate, fromUserId, fromSocketId, from } = data;
-        const peerId = fromUserId ?? fromSocketId ?? from;
-        if (candidate) {
-          await this._addIceCandidate(candidate, peerId);
-        }
-      });
-
-      this.socket.on('viewer-joined', (data) => {
-        console.log('[WebRTC] 👁️ New viewer joined:', data.viewerId);
-      });
+    this.socket.on('viewer-joined', (data) => {
+      console.log('[WebRTC] 👁️ New viewer joined:', data.viewerId);
     });
   }
 
@@ -162,13 +191,59 @@ class WebRTCClient {
         });
       }
 
+      console.log('[HLS-P2P] Starting HLS broadcaster...');
+      
+      // Setup MediaRecorder
+      let mimeType = 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        console.warn('[HLS-P2P] Specified MP4 codecs not supported, trying general video/mp4');
+        mimeType = 'video/mp4';
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        console.warn('[HLS-P2P] video/mp4 not supported, falling back to video/webm; codecs=h264');
+        mimeType = 'video/webm; codecs=h264';
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        console.warn('[HLS-P2P] Fallback to video/webm');
+        mimeType = 'video/webm';
+      }
+
+      console.log('[HLS-P2P] Using mimeType for recording:', mimeType);
+
+      this.mediaRecorder = new MediaRecorder(this.localStream, {
+        mimeType: mimeType,
+        videoBitsPerSecond: 1200000 // 1.2 Mbps for good quality and reasonable size
+      });
+
+      let seq = 0;
+      this.mediaRecorder.ondataavailable = async (event) => {
+        if (event.data && event.data.size > 0) {
+          const chunkSeq = seq++;
+          console.log(`[HLS-P2P] Sending chunk ${chunkSeq}, size: ${event.data.size} bytes`);
+          try {
+            const arrayBuffer = await event.data.arrayBuffer();
+            this.socket.emit('hls-chunk', {
+              userId,
+              username,
+              seq: chunkSeq,
+              data: arrayBuffer
+            });
+          } catch (err) {
+            console.error('[HLS-P2P] Error sending HLS chunk:', err);
+          }
+        }
+      };
+
+      // Start recording with 2-second segments
+      this.mediaRecorder.start(2000);
+
       // Notify server that we're broadcasting
       this.socket.emit('broadcaster-join', { userId, username });
 
-      console.log('[WebRTC] ✓ Broadcasting started');
+      console.log('[HLS-P2P] ✓ Broadcasting started');
       return this.localStream;
     } catch (error) {
-      console.error('[WebRTC] Error accessing media devices:', error);
+      console.error('[HLS-P2P] Error starting broadcaster:', error);
       throw error;
     }
   }
@@ -177,186 +252,106 @@ class WebRTCClient {
    * Start viewing a livestream (viewer mode)
    */
   async startViewer(userId, broadcasterUserId, videoElement) {
-    try {
-      if (!this.isConnected) {
-        await this.connect();
+    const streamUrl = `live/${broadcasterUserId}/playlist.m3u8`;
+    console.log('[HLS] Starting viewer for stream:', streamUrl);
+    this.remoteVideoElement = videoElement || document.getElementById('liveVideo');
+
+    return new Promise((resolve, reject) => {
+      if (this.remoteVideoElement.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS support (Safari)
+        this.remoteVideoElement.src = streamUrl;
+        this.remoteVideoElement.addEventListener('loadedmetadata', () => {
+          this.remoteVideoElement.play().catch(e => console.warn('Play error:', e));
+          resolve(true);
+        }, { once: true });
+        this.remoteVideoElement.addEventListener('error', (err) => {
+          reject(err);
+        }, { once: true });
+      } else if (typeof window.Hls !== 'undefined') {
+        // Standard HLS.js
+        console.log('[HLS] Initializing standard Hls.js player...');
+        const hls = new window.Hls({
+          liveSyncPosition: 1,
+          liveMaxLatencyDuration: 4
+        });
+
+        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+          console.log('[HLS] Manifest parsed, playing...');
+          this.remoteVideoElement.play().catch(e => console.warn('Play error:', e));
+          resolve(true);
+        });
+
+        hls.on(window.Hls.Events.ERROR, (event, data) => {
+          console.error('[HLS] Hls error:', data);
+          if (data.fatal) {
+            switch (data.type) {
+              case window.Hls.ErrorTypes.NETWORK_ERROR:
+                console.log('[HLS] Network error, trying to recover...');
+                hls.startLoad();
+                break;
+              case window.Hls.ErrorTypes.MEDIA_ERROR:
+                console.log('[HLS] Media error, trying to recover...');
+                hls.recoverMediaError();
+                break;
+              default:
+                console.error('[HLS] Unrecoverable HLS error');
+                break;
+            }
+          }
+        });
+
+        hls.loadSource(streamUrl);
+        hls.attachMedia(this.remoteVideoElement);
+        this.hlsInstance = hls;
+      } else {
+        reject(new Error('HLS is not supported on this browser and Hls.js library is missing.'));
       }
-
-      this.remoteVideoElement = videoElement || document.getElementById('liveVideo');
-      console.log('[WebRTC] 👁️ Viewer joining signaling server with userId=', userId, 'viewingUserId=', broadcasterUserId);
-      this.socket.emit('viewer-join', { userId, viewingUserId: broadcasterUserId });
-
-      // Create and send offer to broadcaster
-      await this._createAndSendOffer(broadcasterUserId);
-
-      console.log('[WebRTC] ⏳ Waiting for stream from broadcaster...');
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          console.warn('[WebRTC] ⏱️ Timeout waiting for stream');
-          this._viewerTimeoutId = null;
-          this._viewerResolve = null;
-          resolve(null);
-        }, 10000);
-
-        // Store reference to clear timeout and resolve when stream arrives
-        this._viewerTimeoutId = timeout;
-        this._viewerResolve = resolve;
-      });
-    } catch (error) {
-      console.error('[WebRTC] Error starting viewer:', error);
-      throw error;
-    }
+    });
   }
 
   /**
    * Stop broadcasting/viewing
    */
   async stop() {
+    console.log('[HLS-P2P] Stopping stream...');
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      try {
+        this.mediaRecorder.stop();
+      } catch (e) {
+        console.warn('Error stopping mediaRecorder:', e);
+      }
+      this.mediaRecorder = null;
+    }
+
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (e) {
+          console.warn('Error stopping track:', e);
+        }
+      });
       this.localStream = null;
     }
 
-    // Close all peer connections
-    for (const pc of this.peerConnections.values()) {
-      pc.close();
-    }
-    this.peerConnections.clear();
-
-    console.log('[WebRTC] ✓ Stream stopped');
-  }
-
-  /**
-   * Create offer and send to peer
-   */
-  async _createAndSendOffer(peerId) {
-    const pc = this._getOrCreatePeerConnection(peerId);
-    console.log('[WebRTC] 🔧 Creating offer for peer', peerId, 'localStream=', this.localStream ? 'yes' : 'no');
-    
-    let hasAudioTrack = false;
-    let hasVideoTrack = false;
-
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => {
-        console.log('[WebRTC] 🔧 Adding track to offer pc:', track.kind);
-        pc.addTrack(track, this.localStream);
-        if (track.kind === 'audio') hasAudioTrack = true;
-        if (track.kind === 'video') hasVideoTrack = true;
-      });
-    }
-
-    if (!hasVideoTrack) {
-      console.log('[WebRTC] 🔧 Adding recvonly video transceiver');
-      pc.addTransceiver('video', { direction: 'recvonly' });
-    }
-    if (!hasAudioTrack) {
-      console.log('[WebRTC] 🔧 Adding recvonly audio transceiver');
-      pc.addTransceiver('audio', { direction: 'recvonly' });
-    }
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    
-    this.socket.emit('offer', { to: peerId, offer });
-    console.log('[WebRTC] 📤 Sent offer to', peerId);
-  }
-
-  /**
-   * Handle incoming offer
-   */
-  async _handleOffer(offer, peerId) {
-    const pc = this._getOrCreatePeerConnection(peerId);
-
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => {
-        pc.addTrack(track, this.localStream);
-      });
-    }
-
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    
-    this.socket.emit('answer', { to: peerId, answer });
-    console.log('[WebRTC] 📤 Sent answer to', peerId);
-  }
-
-  /**
-   * Handle incoming answer
-   */
-  async _handleAnswer(answer, peerId) {
-    const pc = this.peerConnections.get(peerId);
-    if (pc) {
-      console.log('[WebRTC] 🔧 Handling answer from', peerId, 'type=', answer.type);
-      await pc.setRemoteDescription(new RTCSessionDescription(answer));
-      console.log('[WebRTC] ✓ Answer received from', peerId);
-    } else {
-      console.warn('[WebRTC] ⚠️ Answer received for unknown peer', peerId);
-    }
-  }
-
-  /**
-   * Add ICE candidate
-   */
-  async _addIceCandidate(candidate, peerId) {
-    const pc = this.peerConnections.get(peerId);
-    if (pc && candidate) {
+    if (this.hlsInstance) {
       try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (error) {
-        console.error('[WebRTC] Error adding ICE candidate:', error);
+        this.hlsInstance.destroy();
+      } catch (e) {
+        console.warn('Error destroying HLS instance:', e);
       }
-    } else {
-      console.warn('[WebRTC] ⚠️ ICE candidate for unknown peer', peerId);
+      this.hlsInstance = null;
     }
-  }
 
-  /**
-   * Get or create peer connection
-   */
-  _getOrCreatePeerConnection(peerId) {
-    if (!this.peerConnections.has(peerId)) {
-      console.log('[WebRTC] 🔧 Creating RTCPeerConnection for', peerId);
-      const pc = new RTCPeerConnection({ iceServers: this.config.iceServers });
-
-      // Handle ICE candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          console.log('[WebRTC] ❄️ Sending ICE candidate to', peerId);
-          this.socket.emit('ice-candidate', {
-            to: peerId,
-            candidate: event.candidate
-          });
-        }
-      };
-
-      // Handle remote stream
-      pc.ontrack = (event) => {
-        console.log('[WebRTC] 📹 Remote track received');
-        this.remoteStream = event.streams[0];
-        const videoElement = this.remoteVideoElement || document.getElementById('liveVideo');
-        if (videoElement && event.streams[0]) {
-          videoElement.srcObject = event.streams[0];
-          videoElement.play().catch(e => console.error('[WebRTC] Play error:', e));
-        }
-        // Clear viewer timeout when stream arrives
-        if (this._viewerTimeoutId) {
-          clearTimeout(this._viewerTimeoutId);
-          this._viewerTimeoutId = null;
-        }
-        if (this._viewerResolve) {
-          this._viewerResolve(this.remoteStream);
-          this._viewerResolve = null;
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        console.log('[WebRTC] Connection state:', pc.connectionState);
-      };
-
-      this.peerConnections.set(peerId, pc);
+    if (this.socket && this.socket.connected) {
+      try {
+        this.socket.emit('broadcaster-stop');
+      } catch (e) {
+        console.warn('Error emitting broadcaster-stop:', e);
+      }
     }
-    return this.peerConnections.get(peerId);
+
+    console.log('[HLS-P2P] ✓ Stream stopped');
   }
 }
 

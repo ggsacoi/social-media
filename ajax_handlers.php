@@ -14,7 +14,12 @@ if (isset($_GET['unread_notifications'])) {
         $users[] = ['username' => $row['username'], 'count' => (int)$row['unread_count']];
         $total += (int)$row['unread_count'];
     }
-    echo json_encode(['success' => true, 'count' => $total, 'users' => $users]);
+    echo json_encode([
+        'success' => true,
+        'count' => $total,
+        'users' => $users,
+        'csrf_token' => $_SESSION['csrf_token'] ?? ''
+    ]);
     exit;
 }
 
@@ -70,12 +75,13 @@ if (isset($_GET['ajax_users'])) {
     $uLimit = 9;
     $uPage = isset($_GET['user_page']) ? (int)$_GET['user_page'] : 2;
     $uOffset = ($uPage - 1) * $uLimit;
-    $sUsers = $conn->prepare("SELECT username, profile_pic FROM users ORDER BY username ASC LIMIT ? OFFSET ?");
-    $sUsers->bind_param('ii', $uLimit, $uOffset);
+    $commentSeed = isset($_GET['seed']) && $_GET['seed'] !== '' ? (int)$_GET['seed'] : (int)($_SESSION['comment_seed'] ?? 1);
+    $sUsers = $conn->prepare("SELECT id, username, profile_pic FROM users ORDER BY RAND(?) LIMIT ? OFFSET ?");
+    $sUsers->bind_param('iii', $commentSeed, $uLimit, $uOffset);
     $sUsers->execute();
     $sUsers = $sUsers->get_result();
     while($su = $sUsers->fetch_assoc()): ?>
-        <div class="eloko">
+        <div class="eloko" data-user-id="<?php echo htmlspecialchars($su['id'], ENT_QUOTES, 'UTF-8'); ?>">
             <a href="profil.php?u=<?php echo urlencode($su['username']); ?>" class="avatar-link">
                 <span class="people" style="<?php echo !empty($su['profile_pic']) ? "background-image: url('" . htmlspecialchars($su['profile_pic']) . "'); background-size: cover;" : ''; ?>">
                     <?php if(empty($su['profile_pic'])): ?><i class="fa-solid fa-user"></i><?php endif; ?>
@@ -84,6 +90,7 @@ if (isset($_GET['ajax_users'])) {
             <a href="profil.php?u=<?php echo urlencode($su['username']); ?>" class="name-link">
                 <h4><?php echo htmlspecialchars($su['username']); ?></h4>
             </a>
+            <span style="color:#666;font-size:0.9rem;">&nbsp;</span>
             <a href="user_page.php?with=<?php echo urlencode($su['username']); ?>" class="chat-icon-btn" title="Envoyer un message">
                 <i class="fa-regular fa-comment-dots"></i>
             </a>
